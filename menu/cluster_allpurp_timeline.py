@@ -372,7 +372,32 @@ while d <= today:
 daily_df = pd.DataFrame(daily_rows)
 daily_df["date"] = pd.to_datetime(daily_df["date"])
 
-daily_chart = (
+# Wide format for combined per-day tooltip
+daily_wide = daily_df.pivot_table(
+    index="date", columns="state", values="runtime_hours", fill_value=0
+).reset_index()
+daily_wide.columns.name = None
+_present_states = [s for s in _active_states if s in daily_wide.columns]
+daily_wide["total_hours"] = daily_wide[_present_states].sum(axis=1)
+
+_STATE_EMOJI = {
+    "STARTING":    "🟡",
+    "RUNNING":     "🟢",
+    "RESTARTING":  "🟠",
+    "INACTIVITY":  "🔴",
+    "TERMINATING": "🔴",
+    "ERROR":       "🔴",
+}
+
+_tooltip = [
+    alt.Tooltip("date:T", title="📅 Date", format="%Y-%m-%d"),
+    alt.Tooltip("total_hours:Q", title="⬜ Total, h", format=".2f"),
+] + [
+    alt.Tooltip(f"{s}:Q", title=f"{_STATE_EMOJI.get(s, '⬜')} {s}, h", format=".2f")
+    for s in _present_states
+]
+
+_bars = (
     alt.Chart(daily_df)
     .mark_bar()
     .encode(
@@ -386,14 +411,20 @@ daily_chart = (
             ),
             legend=alt.Legend(title="State"),
         ),
-        tooltip=[
-            alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
-            "state",
-            alt.Tooltip("runtime_hours:Q", title="Hours", format=".1f"),
-        ],
     )
-    .properties(width="container", height=250)
 )
+
+_overlay = (
+    alt.Chart(daily_wide)
+    .mark_bar(opacity=0)
+    .encode(
+        x=alt.X("date:T"),
+        y=alt.Y("total_hours:Q"),
+        tooltip=_tooltip,
+    )
+)
+
+daily_chart = alt.layer(_bars, _overlay).properties(width="container", height=250)
 
 st.altair_chart(daily_chart, use_container_width=True)
 
