@@ -26,11 +26,11 @@ menu = {
     ],
     "Clusters Monitoring": [
         st.Page("menu/cluster_allpurp_timeline.py", title="All-Purpose Daily Runs", icon=":material/timeline:",),
+        st.Page("menu/jobs_in_allpurp_cluster.py", title="Jobs in All-purp Cluster", icon=":material/memory:",),
     ],
     "Jobs": [
         st.Page("menu/jobs_run_daily.py", title="Jobs Runs (Daily)", icon=":material/check_circle:",),
         st.Page("menu/jobs_timeline_hourly.py", title="Jobs Timeline (Hourly)", icon=":material/timeline:"),
-        st.Page("menu/jobs_in_allpurp_cluster.py", title="Jobs in All-purp Cluster", icon=":material/memory:",),
     ],
 }
 

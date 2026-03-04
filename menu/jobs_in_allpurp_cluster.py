@@ -83,11 +83,12 @@ EVENT_TO_STATE = {
 }
 
 CLUSTER_STATE_COLORS = {
-    "STARTING":   "#FFD54F",
-    "RUNNING":    "#4CAF50",
-    "RESTARTING": "#FF9800",
-    "ERROR":      "#EF5350",
-    "UNKNOWN":    "#CE93D8",
+    "STARTING":    "#FFD54F",
+    "RUNNING":     "#4CAF50",
+    "RESTARTING":  "#FF9800",
+    "INACTIVITY":  "#EF5350",
+    "ERROR":       "#EF5350",
+    "UNKNOWN":     "#CE93D8",
 }
 
 cluster_segments = []
@@ -125,12 +126,32 @@ with st.spinner("Fetching cluster events…"):
                 continue
 
             if cur_state is not None and cur_start is not None:
-                cluster_segments.append({
-                    "cluster": selected_name,
-                    "state": cur_state,
-                    "start": cur_start,
-                    "end": ts,
-                })
+                if ev_type == EventType.TERMINATING:
+                    inactivity_min = 0
+                    if ev.details:
+                        reason = getattr(ev.details, 'reason', None)
+                        if reason:
+                            params = getattr(reason, 'parameters', None) or {}
+                            try:
+                                inactivity_min = int(params.get('inactivity_duration_min', 0))
+                            except (ValueError, TypeError):
+                                inactivity_min = 0
+                    if inactivity_min > 0:
+                        inactivity_start = ts - dt.timedelta(minutes=inactivity_min)
+                        if inactivity_start > cur_start:
+                            cluster_segments.append({"cluster": selected_name, "state": cur_state, "start": cur_start, "end": inactivity_start})
+                        else:
+                            inactivity_start = cur_start
+                        cluster_segments.append({"cluster": selected_name, "state": "INACTIVITY", "start": inactivity_start, "end": ts})
+                    else:
+                        cluster_segments.append({"cluster": selected_name, "state": cur_state, "start": cur_start, "end": ts})
+                else:
+                    cluster_segments.append({
+                        "cluster": selected_name,
+                        "state": cur_state,
+                        "start": cur_start,
+                        "end": ts,
+                    })
 
             cur_state = new_state
             cur_start = ts
