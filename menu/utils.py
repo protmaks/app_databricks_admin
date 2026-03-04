@@ -2,15 +2,15 @@
 
 # SQL Warehouse DBU rates per cluster (single cluster unit)
 WAREHOUSE_SIZE_DBU = {
-    "2X-Small": 2,
-    "X-Small": 4,
-    "Small": 8,
-    "Medium": 16,
-    "Large": 32,
-    "X-Large": 64,
-    "2X-Large": 128,
-    "3X-Large": 256,
-    "4X-Large": 512,
+    "2X-Small": 4,
+    "X-Small": 6,
+    "Small": 12,
+    "Medium": 24,
+    "Large": 40,
+    "X-Large": 80,
+    "2X-Large": 144,
+    "3X-Large": 272,
+    "4X-Large": 528,
 }
 
 

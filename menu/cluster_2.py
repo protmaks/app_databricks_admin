@@ -10,12 +10,23 @@ APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 st.header("SQL Warehouses")
 
-COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
-             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
+COMMON_TZ = [
+    "UTC",
+    "US/Eastern",
+    "US/Central",
+    "US/Pacific",
+    "Europe/London",
+    "Europe/Berlin",
+    "Europe/Moscow",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Australia/Sydney",
+]
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
 tz = pytz.timezone(selected_tz)
 
 import time
+
 now_epoch_ms = int(time.time() * 1000)
 
 w = WorkspaceClient()
@@ -32,8 +43,9 @@ for wh in warehouses:
         continue
     # Find backing cluster: match by name or tags
     for c in all_clusters:
-        match = (c.cluster_name and wh.id in c.cluster_name) or \
-                (c.custom_tags and wh.id in str(c.custom_tags))
+        match = (c.cluster_name and wh.id in c.cluster_name) or (
+            c.custom_tags and wh.id in str(c.custom_tags)
+        )
         if not match:
             continue
         if c.last_state_loss_time:
@@ -76,24 +88,6 @@ STATE_COLORS = {
     WarehouseState.DELETED: "⚫",
 }
 
-# SQL Warehouse DBU rates per cluster (single cluster unit)
-WAREHOUSE_SIZE_DBU = {
-    "2X-Small": 4,
-    "X-Small": 6,
-    "Small": 12,
-    "Medium": 24,
-    "Large": 40,
-    "X-Large": 80,
-    "2X-Large": 144,
-    "3X-Large": 272,
-    "4X-Large": 528,
-}
-
-def estimate_warehouse_dbu(cluster_size, min_clusters, max_clusters):
-    base = WAREHOUSE_SIZE_DBU.get(cluster_size, 0)
-    min_dbu = base * (min_clusters or 1)
-    max_dbu = base * (max_clusters or 1)
-    return min_dbu, max_dbu
 
 if not warehouses:
     st.info("No SQL warehouses found.")
@@ -122,7 +116,22 @@ else:
 
     # Table header
     header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
-    for col, h in zip(header_cols, [None, "Name", "Creator", "Size", "Min/Max", "DBU/hr (min-max)", "Auto-Stop", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
+    for col, h in zip(
+        header_cols,
+        [
+            None,
+            "Name",
+            "Creator",
+            "Size",
+            "Min/Max",
+            "DBU/hr (min-max)",
+            "Auto-Stop",
+            "New (min)",
+            None,
+            f"Start Time ({selected_tz})",
+            "Uptime",
+        ],
+    ):
         if h:
             col.markdown(f"**{h}**")
 
@@ -139,7 +148,9 @@ else:
         current_val = wh.auto_stop_mins or 0
         min_max = f"{wh.min_num_clusters or '-'} / {wh.max_num_clusters or '-'}"
 
-        min_dbu, max_dbu = estimate_warehouse_dbu(wh.cluster_size, wh.min_num_clusters, wh.max_num_clusters)
+        min_dbu, max_dbu = estimate_warehouse_dbu(
+            wh.cluster_size, wh.min_num_clusters, wh.max_num_clusters
+        )
         dbu_str = f"{min_dbu} - {max_dbu}" if min_dbu != max_dbu else f"{min_dbu}"
 
         # Start time & uptime
@@ -159,13 +170,24 @@ else:
         with st.form(key=f"as_form_{i}"):
             row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
             row_cols[0].write(indicator)
-            row_cols[1].markdown(f"{wh.name}<br><span style='color:gray'>({wh.id})</span>", unsafe_allow_html=True)
+            row_cols[1].markdown(
+                f"{wh.name}<br><span style='color:gray'>({wh.id})</span>",
+                unsafe_allow_html=True,
+            )
             row_cols[2].write(wh.creator_name or "—")
             row_cols[3].write(wh.cluster_size or "—")
             row_cols[4].write(min_max)
             row_cols[5].write(dbu_str)
             row_cols[6].write(auto_stop)
-            new_val = row_cols[7].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"as_{i}", label_visibility="collapsed")
+            new_val = row_cols[7].number_input(
+                "min",
+                min_value=0,
+                max_value=1440,
+                value=current_val,
+                step=10,
+                key=f"as_{i}",
+                label_visibility="collapsed",
+            )
             submitted = row_cols[8].form_submit_button("Apply")
             row_cols[9].write(start_str)
             row_cols[10].write(uptime)
