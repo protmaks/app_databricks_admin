@@ -1,9 +1,10 @@
 import os
-import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import State as WarehouseState
+
+from menu.utils import estimate_warehouse_dbu
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
