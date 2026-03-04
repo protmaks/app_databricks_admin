@@ -116,7 +116,7 @@ else:
         return w.warehouses.edit(**edit_kwargs)
 
     # Table header
-    header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
+    header_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8])
     for col, h in zip(
         header_cols,
         [
@@ -125,7 +125,7 @@ else:
             "Creator",
             "Size",
             "Min/Max",
-            "DBU/hr (min-max)",
+            "DBU/h",
             "Auto-Stop",
             "New (min)",
             None,
@@ -169,7 +169,7 @@ else:
             uptime = "—"
 
         with st.form(key=f"as_form_{i}"):
-            row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
+            row_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8])
             row_cols[0].write(indicator)
             row_cols[1].markdown(
                 f"{wh.name}<br><span style='color:gray'>({wh.id})</span>",

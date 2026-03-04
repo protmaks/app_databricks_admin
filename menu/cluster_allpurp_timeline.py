@@ -163,69 +163,51 @@ with st.spinner("Fetching cluster events…"):
 _hidden = {"TERMINATED", "TERMINATING"}
 segments = [s for s in segments if s["state"] not in _hidden]
 
-if not segments:
-    st.info("No events found for the selected date and clusters.")
-    st.stop()
+chart = None
+if segments:
+    df = pd.DataFrame(segments)
+    df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
+    df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
 
-df = pd.DataFrame(segments)
-
-# Strip timezone for Altair compatibility
-df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
-df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
-
-# Add invisible anchors so the x-axis spans 00:00–24:00
-day_start_naive = day_start_local.replace(tzinfo=None)
-day_end_naive = day_start_naive + dt.timedelta(days=1)
-anchor_cluster = df["cluster"].iloc[0]
-anchors = pd.DataFrame(
-    [
-        {
-            "cluster": anchor_cluster,
-            "state": "UNKNOWN",
-            "start": day_start_naive,
-            "end": day_start_naive,
-        },
-        {
-            "cluster": anchor_cluster,
-            "state": "UNKNOWN",
-            "start": day_end_naive,
-            "end": day_end_naive,
-        },
-    ]
-)
-df = pd.concat([df, anchors], ignore_index=True)
-df["_opacity"] = df["state"].apply(lambda s: 0.0 if s == "UNKNOWN" else 1.0)
-
-df["duration_min"] = ((df["end"] - df["start"]).dt.total_seconds() / 60).round(1)
-
-domain = list(STATE_COLORS.keys())
-range_ = list(STATE_COLORS.values())
-
-chart = (
-    alt.Chart(df)
-    .mark_bar()
-    .encode(
-        x=alt.X("start:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)),
-        x2="end:T",
-        y=alt.Y("cluster:N", title="", sort=alt.SortField("cluster")),
-        color=alt.Color(
-            "state:N",
-            scale=alt.Scale(domain=domain, range=range_),
-            legend=alt.Legend(title="State"),
-        ),
-        opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
-        tooltip=[
-            "cluster",
-            "state",
-            alt.Tooltip("start:T", title="Start", format="%H:%M:%S"),
-            alt.Tooltip("end:T", title="End", format="%H:%M:%S"),
-            alt.Tooltip("duration_min:Q", title="Duration (min)"),
-        ],
+    day_start_naive = day_start_local.replace(tzinfo=None)
+    day_end_naive = day_start_naive + dt.timedelta(days=1)
+    anchor_cluster = df["cluster"].iloc[0]
+    anchors = pd.DataFrame(
+        [
+            {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_start_naive, "end": day_start_naive},
+            {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_end_naive, "end": day_end_naive},
+        ]
     )
-    .properties(width="container", height=max(len(selected_clusters) * 40, 120))
-)
+    df = pd.concat([df, anchors], ignore_index=True)
+    df["_opacity"] = df["state"].apply(lambda s: 0.0 if s == "UNKNOWN" else 1.0)
+    df["duration_min"] = ((df["end"] - df["start"]).dt.total_seconds() / 60).round(1)
 
-st.altair_chart(chart, use_container_width=True)
+    domain = list(STATE_COLORS.keys())
+    range_ = list(STATE_COLORS.values())
+
+    chart = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("start:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)),
+            x2="end:T",
+            y=alt.Y("cluster:N", title="", sort=alt.SortField("cluster")),
+            color=alt.Color(
+                "state:N",
+                scale=alt.Scale(domain=domain, range=range_),
+                legend=alt.Legend(title="State"),
+            ),
+            opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
+            tooltip=[
+                "cluster",
+                "state",
+                alt.Tooltip("start:T", title="Start", format="%H:%M:%S"),
+                alt.Tooltip("end:T", title="End", format="%H:%M:%S"),
+                alt.Tooltip("duration_min:Q", title="Duration (min)"),
+            ],
+        )
+        .properties(width="container", height=max(len(selected_clusters) * 40, 120))
+    )
 
 # --- Daily cluster runtime (last 90 days) ---
 st.subheader("Daily Cluster Runtime (last 90 days)")
@@ -340,3 +322,9 @@ daily_chart = (
 )
 
 st.altair_chart(daily_chart, use_container_width=True)
+
+st.subheader("Cluster State Timeline")
+if not segments:
+    st.info("No events found for the selected date.")
+else:
+    st.altair_chart(chart, use_container_width=True)

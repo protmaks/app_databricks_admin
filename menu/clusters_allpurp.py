@@ -96,8 +96,8 @@ else:
         return w.clusters.edit(**edit_kwargs)
 
     # Table header
-    header_cols = st.columns([0.3, 1.5, 1, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
-    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "DBU/hr (min-max)", "Auto-Term", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
+    header_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8])
+    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "DBU/h", "Auto-Term", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
         if h:
             col.markdown(f"**{h}**")
 
@@ -139,7 +139,7 @@ else:
         current_val = c.autotermination_minutes or 0
 
         with st.form(key=f"at_form_{i}"):
-            row_cols = st.columns([0.3, 1.5, 1, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
+            row_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8])
             row_cols[0].write(indicator)
             row_cols[1].markdown(f"{c.cluster_name}<br><span style='color:gray'>({c.cluster_id})</span>", unsafe_allow_html=True)
             row_cols[2].write(c.creator_user_name or "—")
