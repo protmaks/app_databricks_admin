@@ -194,9 +194,6 @@ df = df[df["job"].isin(selected_jobs)]
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
 df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
 
-# Debug — remove after confirming
-st.write("DEBUG states:", df["state"].value_counts().to_dict())
-st.dataframe(df[["job", "state", "start", "end"]])
 
 domain = list(STATE_COLORS.keys())
 range_ = list(STATE_COLORS.values())
