@@ -139,7 +139,7 @@ with st.spinner("Fetching scheduled jobs…"):
                 job_id=job.job_id, limit=1, completed_only=True,
             ))
             if last_runs and last_runs[0].run_duration:
-                last_duration_s = last_runs[0].run_duration / 1000
+                last_duration_s = max(last_runs[0].run_duration / 1000, 300)
         except Exception:
             pass
 
