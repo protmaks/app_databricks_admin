@@ -8,9 +8,13 @@ st.set_page_config(
     page_title="Databricks Cost and Optimization",
     layout="wide",
 )
+
 logo_path = Path(__file__).parent / "assets" / "logo.png"
-if logo_path.exists():
-    st.logo(str(logo_path))
+logo_sm_path = Path(__file__).parent / "assets" / "logo_sm.png"
+st.logo(
+    str(logo_path),
+    icon_image=str(logo_sm_path),
+)
 
 menu = {
     "Help": [

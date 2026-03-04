@@ -51,7 +51,7 @@ STATE_COLORS = {
     "TERMINATING": "#CE93D8",  # purple
 }
 
-w = WorkspaceClient()
+w = WorkspaceClient(profile="DEFAULT")
 
 
 with st.spinner("Fetching job runs…"):

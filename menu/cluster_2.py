@@ -30,7 +30,7 @@ import time
 
 now_epoch_ms = int(time.time() * 1000)
 
-w = WorkspaceClient()
+w = WorkspaceClient(profile="DEFAULT")
 warehouses = list(w.warehouses.list())
 
 # Find start times for running warehouses via backing clusters

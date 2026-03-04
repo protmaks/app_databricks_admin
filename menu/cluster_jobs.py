@@ -35,7 +35,7 @@ selected_tz = col_tz.selectbox(
 )
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = WorkspaceClient(profile="DEFAULT")
 
 clusters = [
     c for c in w.clusters.list()

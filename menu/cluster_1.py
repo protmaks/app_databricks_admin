@@ -16,7 +16,7 @@ COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = WorkspaceClient(profile="DEFAULT")
 clusters = [c for c in w.clusters.list()
             if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
 
