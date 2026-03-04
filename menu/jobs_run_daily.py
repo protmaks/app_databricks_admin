@@ -33,7 +33,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient()
+w = WorkspaceClient(profile="DEFAULT")
 
 with st.spinner("Fetching completed job runs…"):
     try:
