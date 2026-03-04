@@ -1,5 +1,6 @@
 import os
 import datetime as dt
+import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import State as WarehouseState
@@ -7,6 +8,11 @@ from databricks.sdk.service.sql import State as WarehouseState
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 st.header("SQL Warehouses")
+
+COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
+             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
+tz = pytz.timezone(selected_tz)
 
 w = WorkspaceClient()
 warehouses = list(w.warehouses.list())
@@ -34,6 +40,25 @@ STATE_COLORS = {
     WarehouseState.DELETED: "⚫",
 }
 
+# SQL Warehouse DBU rates per cluster (single cluster unit)
+WAREHOUSE_SIZE_DBU = {
+    "2X-Small": 2,
+    "X-Small": 4,
+    "Small": 8,
+    "Medium": 16,
+    "Large": 32,
+    "X-Large": 64,
+    "2X-Large": 128,
+    "3X-Large": 256,
+    "4X-Large": 512,
+}
+
+def estimate_warehouse_dbu(cluster_size, min_clusters, max_clusters):
+    base = WAREHOUSE_SIZE_DBU.get(cluster_size, 0)
+    min_dbu = base * (min_clusters or 1)
+    max_dbu = base * (max_clusters or 1)
+    return min_dbu, max_dbu
+
 if not warehouses:
     st.info("No SQL warehouses found.")
 else:
@@ -60,8 +85,8 @@ else:
         return w.warehouses.edit(**edit_kwargs)
 
     # Table header
-    header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.7, 0.7, 0.8, 0.5])
-    for col, h in zip(header_cols, [None, "Name", "Creator", "Size", "Min/Max", "Auto-Stop", "New (min)", None, None]):
+    header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5])
+    for col, h in zip(header_cols, [None, "Name", "Creator", "Size", "Min/Max", "DBU/hr (min-max)", "Auto-Stop", "New (min)", None]):
         if h:
             col.markdown(f"**{h}**")
 
@@ -76,18 +101,22 @@ else:
 
         indicator = STATE_COLORS.get(wh.state, "⚪")
         current_val = wh.auto_stop_mins or 0
-        min_max = f"{wh.min_num_clusters or 'N/A'} / {wh.max_num_clusters or 'N/A'}"
+        min_max = f"{wh.min_num_clusters or '-'} / {wh.max_num_clusters or '-'}"
+
+        min_dbu, max_dbu = estimate_warehouse_dbu(wh.cluster_size, wh.min_num_clusters, wh.max_num_clusters)
+        dbu_str = f"{min_dbu} - {max_dbu}" if min_dbu != max_dbu else f"{min_dbu}"
 
         with st.form(key=f"as_form_{i}"):
-            row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.7, 0.7, 0.8, 0.5])
+            row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5])
             row_cols[0].write(indicator)
-            row_cols[1].write(wh.name)
-            row_cols[2].write(wh.creator_name or "N/A")
-            row_cols[3].write(wh.cluster_size or "N/A")
+            row_cols[1].markdown(f"{wh.name}<br><span style='color:gray'>({wh.id})</span>", unsafe_allow_html=True)
+            row_cols[2].write(wh.creator_name or "—")
+            row_cols[3].write(wh.cluster_size or "—")
             row_cols[4].write(min_max)
-            row_cols[5].write(auto_stop)
-            new_val = row_cols[6].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"as_{i}", label_visibility="collapsed")
-            submitted = row_cols[7].form_submit_button("Apply")
+            row_cols[5].write(dbu_str)
+            row_cols[6].write(auto_stop)
+            new_val = row_cols[7].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"as_{i}", label_visibility="collapsed")
+            submitted = row_cols[8].form_submit_button("Apply")
         if submitted:
             try:
                 result = apply_auto_stop(wh.id, new_val)

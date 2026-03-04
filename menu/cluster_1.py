@@ -1,5 +1,6 @@
 import os
 import datetime as dt
+import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
@@ -7,6 +8,11 @@ from databricks.sdk.service.compute import ClusterSource, State
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 st.header("All-Purpose Clusters")
+
+COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
+             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
+tz = pytz.timezone(selected_tz)
 
 w = WorkspaceClient()
 clusters = [c for c in w.clusters.list()
@@ -39,6 +45,18 @@ STATE_COLORS = {
 
 import time
 now_epoch_ms = int(time.time() * 1000)
+
+# Build node_type_id -> num_cores map for DBU estimation
+node_types = {nt.node_type_id: nt.num_cores for nt in w.clusters.list_node_types().node_types}
+
+def estimate_dbu(driver_type, worker_type, min_workers, max_workers):
+    """Estimate DBU/hour range. All-purpose ≈ 1 DBU per 4 vCPUs."""
+    driver_cores = node_types.get(driver_type, 0)
+    worker_cores = node_types.get(worker_type, 0)
+    driver_dbu = driver_cores // 4
+    min_dbu = driver_dbu + min_workers * (worker_cores // 4)
+    max_dbu = driver_dbu + max_workers * (worker_cores // 4)
+    return min_dbu, max_dbu
 
 if not clusters:
     st.info("No clusters found.")
@@ -84,19 +102,25 @@ else:
         return w.clusters.edit(**edit_kwargs)
 
     # Table header
-    header_cols = st.columns([0.3, 1.5, 1, 1, 0.7, 0.8, 1.2, 0.6, 0.8, 0.5])
-    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "Auto-Term", "Start Time (UTC)", "Uptime", "New (min)", None]):
+    header_cols = st.columns([0.3, 1.5, 1, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
+    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "DBU/hr (min-max)", "Auto-Term", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
         if h:
             col.markdown(f"**{h}**")
 
     st.divider()
 
     for i, c in enumerate(clusters):
-        # Workers display
+        # Workers display & DBU calc
+        worker_type = c.node_type_id or c.driver_node_type_id
+        driver_type = c.driver_node_type_id or c.node_type_id
         if c.autoscale:
             workers = f"{c.autoscale.min_workers}-{c.autoscale.max_workers} (auto)"
+            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, c.autoscale.min_workers, c.autoscale.max_workers)
         else:
-            workers = str(c.num_workers) if c.num_workers is not None else "N/A"
+            num_w = c.num_workers if c.num_workers is not None else 0
+            workers = str(num_w)
+            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, num_w, num_w)
+        dbu_str = f"{int(min_dbu)} - {int(max_dbu)}" if min_dbu != max_dbu else f"{int(min_dbu)}"
 
         # Auto-termination
         if c.autotermination_minutes and c.autotermination_minutes > 0:
@@ -106,9 +130,10 @@ else:
 
         # Start time & uptime
         if c.state == State.RUNNING and c.last_state_loss_time:
-            start_str = dt.datetime.utcfromtimestamp(c.last_state_loss_time / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            start_utc = dt.datetime.fromtimestamp(c.last_state_loss_time / 1000, tz=pytz.utc)
+            start_str = start_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
         else:
-            start_str = "N/A"
+            start_str = "—"
 
         if c.state == State.RUNNING and c.last_state_loss_time:
             total_secs = (now_epoch_ms - c.last_state_loss_time) // 1000
@@ -117,22 +142,23 @@ else:
             mins = rem // 60
             uptime = f"{days}d {hours}h {mins}m"
         else:
-            uptime = "N/A"
+            uptime = "—"
 
         indicator = STATE_COLORS.get(c.state, "⚪")
         current_val = c.autotermination_minutes or 0
 
         with st.form(key=f"at_form_{i}"):
-            row_cols = st.columns([0.3, 1.5, 1, 1, 0.7, 0.8, 1.2, 0.6, 0.8, 0.5])
+            row_cols = st.columns([0.3, 1.5, 1, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
             row_cols[0].write(indicator)
-            row_cols[1].write(c.cluster_name)
-            row_cols[2].write(c.creator_user_name or "N/A")
+            row_cols[1].markdown(f"{c.cluster_name}<br><span style='color:gray'>({c.cluster_id})</span>", unsafe_allow_html=True)
+            row_cols[2].write(c.creator_user_name or "—")
             row_cols[3].write(workers)
-            row_cols[4].write(auto_term)
-            row_cols[5].write(start_str)
-            row_cols[6].write(uptime)
-            new_val = row_cols[7].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"at_{i}", label_visibility="collapsed")
-            submitted = row_cols[8].form_submit_button("Apply")
+            row_cols[4].write(dbu_str)
+            row_cols[5].write(auto_term)
+            new_val = row_cols[6].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"at_{i}", label_visibility="collapsed")
+            submitted = row_cols[7].form_submit_button("Apply")
+            row_cols[8].write(start_str)
+            row_cols[9].write(uptime)
         if submitted:
             try:
                 result = apply_auto_termination(c.cluster_id, new_val)
