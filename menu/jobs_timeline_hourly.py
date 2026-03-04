@@ -32,6 +32,17 @@ selected_tz = col_tz.selectbox(
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 tz = pytz.timezone(selected_tz)
 
+if selected_date == dt.date.today():
+    st.markdown("""
+    <style>
+    [data-testid="stDateInput"] input {
+        border-color: #1976D2 !important;
+        color: #1976D2 !important;
+        font-weight: 600 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Day boundaries in epoch ms (in selected timezone)
 day_start_local = tz.localize(dt.datetime.combine(selected_date, dt.time.min))
 day_end_local = tz.localize(dt.datetime.combine(selected_date, dt.time.max))
@@ -43,7 +54,7 @@ end_ms = int(effective_end.timestamp() * 1000)
 STATE_COLORS = {
     "SCHEDULED": "#E0E0E0",  # gray
     "PENDING": "#FFD54F",  # yellow
-    "RUNNING": "#4CAF50",  # green
+    "RUNNING": "#2196F3",  # blue
     "SUCCESS": "#66BB6A",  # light green
     "FAILED": "#EF5350",  # red
     "TIMEDOUT": "#FF9800",  # orange
@@ -103,6 +114,7 @@ for run in runs:
     segments.append(
         {
             "job": name,
+            "job_id": run.job_id,
             "run_id": run.run_id,
             "state": display_state,
             "start": run_start,
@@ -166,6 +178,7 @@ with st.spinner("Fetching scheduled jobs…"):
                 scheduled_segments.append(
                     {
                         "job": job_name,
+                        "job_id": job.job_id,
                         "run_id": None,
                         "state": "SCHEDULED",
                         "start": fire_local,
@@ -185,6 +198,15 @@ df = pd.DataFrame(all_segments)
 
 job_names = sorted(df["job"].unique())
 selected_jobs = job_names
+
+# Build lookup: job name → job_id (before anchors are added)
+job_to_id = df.drop_duplicates("job").set_index("job")["job_id"].to_dict()
+
+# Build lookup: job name → run_id for currently RUNNING jobs
+running_df = df[(df["state"] == "RUNNING") & (df["run_id"].notna())]
+job_to_running_run_id = (
+    running_df.drop_duplicates("job").set_index("job")["run_id"].to_dict()
+)
 
 # Strip timezone for Altair compatibility
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
@@ -207,6 +229,7 @@ anchors = pd.DataFrame(
     [
         {
             "job": anchor_jobs,
+            "job_id": None,
             "state": "TERMINATED",
             "start": day_start_naive,
             "end": day_start_naive,
@@ -215,6 +238,7 @@ anchors = pd.DataFrame(
         },
         {
             "job": anchor_jobs,
+            "job_id": None,
             "state": "TERMINATED",
             "start": day_end_naive,
             "end": day_end_naive,
@@ -225,7 +249,24 @@ anchors = pd.DataFrame(
 )
 df = pd.concat([df, anchors], ignore_index=True)
 
-timeline_chart = (
+# Alternating row background stripes
+sorted_jobs = sorted(df["job"].unique())
+stripe_df = pd.DataFrame([
+    {"job": jname, "start": day_start_naive, "end": day_end_naive}
+    for i, jname in enumerate(sorted_jobs)
+    if i % 2 == 0
+])
+bg_chart = (
+    alt.Chart(stripe_df)
+    .mark_rect(color="#F8F8F8", opacity=1.0)
+    .encode(
+        x=alt.X("start:T"),
+        x2=alt.X2("end:T"),
+        y=alt.Y("job:N", sort=alt.SortField("job")),
+    )
+)
+
+bars_chart = (
     alt.Chart(df)
     .mark_bar()
     .encode(
@@ -247,7 +288,12 @@ timeline_chart = (
             alt.Tooltip("end:T", format="%H:%M:%S"),
         ],
     )
-    .properties(height=max(len(selected_jobs) * 40, 100))
+)
+
+timeline_chart = (
+    alt.layer(bg_chart, bars_chart)
+    .properties(height=alt.Step(25))
+    .resolve_scale(color="independent")
 )
 
 # --- Parallel jobs concurrency chart (5-min windows) ---
@@ -255,9 +301,7 @@ timeline_chart = (
 # Include all runs (actual + scheduled) for concurrency
 runs_df = df[df["_opacity"] > 0].copy()  # exclude invisible anchors
 
-if runs_df.empty:
-    combined = timeline_chart.properties(title="Jobs Execution Timeline")
-else:
+if not runs_df.empty:
     # Build 5-minute buckets spanning the full day (00:00 to 24:00)
     counts = []
     t = day_start_naive
@@ -274,7 +318,10 @@ else:
         .mark_line(point=False, interpolate="step-after")
         .encode(
             x=alt.X(
-                "time:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)
+                "time:T",
+                title="Time",
+                axis=alt.Axis(format="%H:%M", labelAngle=-45),
+                scale=alt.Scale(domain=[day_start_naive, day_end_naive]),
             ),
             y=alt.Y(
                 "parallel_jobs:Q",
@@ -289,6 +336,118 @@ else:
         .properties(height=150)
     )
 
-    combined = alt.vconcat(timeline_chart, concurrency_chart).resolve_scale(x="shared")
+st.markdown("""
+<style>
+.st-emotion-cache-13tburv {
+    min-height: 0 !important;
+}
+div[data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+    overflow: visible !important;
+}
+div[data-testid="column"],
+div[data-testid="stHorizontalBlock"] {
+    overflow: visible !important;
+}
+div[data-testid="element-container"]:has(.stButton) {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] {
+    height: 25px !important;
+    min-height: 25px !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    line-height: 25px !important;
+}
+button[data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(49,51,63,0.08) !important;
+    border: none !important;
+}
+div[data-testid="stButton"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    width: 100% !important;
+}
+div[data-testid="stButton"] > div,
+div[data-testid="stButton"] > div > div,
+div.stTooltipIcon,
+div[data-testid="stTooltipHoverTarget"] {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+div[data-testid="stTooltipHoverTarget"] {
+    justify-content: center !important;
+}
+div[data-testid="stButton"] > button,
+div[data-testid="stButton"] > div button {
+    width: 100% !important;
+    padding: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+[data-testid="stMarkdownContainer"] p {
+    font-size: 0.6rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-st.altair_chart(combined, use_container_width=True)
+# Layout: narrow button column to the left, charts to the right
+col_btn, col_chart = st.columns([0.02, 0.98])
+
+triggered_job = None
+
+with col_chart:
+    if not runs_df.empty:
+        combined_chart = (
+            alt.vconcat(concurrency_chart, timeline_chart, spacing=50)
+            .resolve_scale(x="shared")
+            .properties(padding={"top": 50, "bottom": 5, "left": 0, "right": 0})
+        )
+        st.altair_chart(combined_chart, use_container_width=True)
+    else:
+        st.altair_chart(timeline_chart, use_container_width=True)
+
+with col_btn:
+    if not runs_df.empty:
+        # Spacer to push buttons past the concurrency chart area
+        concurrency_height_px = 50 + 150 + 55 + 90  # top padding + chart + x-axis labels + spacing
+        st.markdown(
+            f'<div style="height:{concurrency_height_px}px"></div>',
+            unsafe_allow_html=True,
+        )
+    if selected_date == dt.date.today():
+        for jname in job_names:
+            jid = job_to_id.get(jname)
+            running_run_id = job_to_running_run_id.get(jname)
+            if running_run_id:
+                if st.button("■", key=f"stop_{running_run_id}", use_container_width=True):
+                    triggered_job = ("stop", jname, int(running_run_id))
+            elif jid:
+                if st.button("▶", key=f"run_{jid}", use_container_width=True):
+                    triggered_job = ("run", jname, int(jid))
+
+if triggered_job:
+    action, jname, id_ = triggered_job
+    if action == "run":
+        try:
+            run_result = w.jobs.run_now(job_id=id_)
+            st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
+        except Exception as e:
+            st.error(f"Failed to start **{jname}**: {e}")
+    else:
+        try:
+            w.jobs.cancel_run(run_id=id_)
+            st.success(f"Job **{jname}** stop requested — run ID: {id_}")
+        except Exception as e:
+            st.error(f"Failed to stop **{jname}**: {e}")

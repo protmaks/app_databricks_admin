@@ -21,11 +21,12 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-col_tz, col_days = st.columns([0.15, 0.85])
+col_tz, col_days, col_teams = st.columns([0.12, 0.63, 0.25])
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=0, key="last_run_tz"
 )
-lookback_days = col_days.slider("Lookback days", min_value=1, max_value=90, value=30)
+lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=30)
+col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 
 tz = pytz.timezone(selected_tz)
 now_local = dt.datetime.now(tz)
@@ -35,7 +36,7 @@ end_ms = int(now_local.timestamp() * 1000)
 
 w = WorkspaceClient(profile="DEFAULT")
 
-with st.spinner("Fetching completed job runs…"):
+with st.spinner("Fetching data…"):
     try:
         completed_runs = list(
             w.jobs.list_runs(
@@ -49,14 +50,48 @@ with st.spinner("Fetching completed job runs…"):
         st.error(f"Failed to fetch runs: {e}")
         st.stop()
 
-# Build records for all completed runs
+    try:
+        all_jobs = list(w.jobs.list(expand_tasks=False))
+    except Exception as e:
+        st.error(f"Failed to fetch job list: {e}")
+        st.stop()
+
+    try:
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+    except Exception:
+        active_runs = []
+
+# Registry: job_id → canonical name from job settings
+registry_id_to_name = {
+    j.job_id: (j.settings.name or f"job-{j.job_id}")
+    for j in all_jobs if j.job_id
+}
+job_to_id = {name: jid for jid, name in registry_id_to_name.items()}
+
+# Match active runs by job_id
+active_jid_to_run_id = {}
+for run in active_runs:
+    if run.job_id and run.job_id not in active_jid_to_run_id:
+        active_jid_to_run_id[run.job_id] = run.run_id
+
+job_to_running_run_id = {
+    jname: active_jid_to_run_id[jid]
+    for jname, jid in job_to_id.items()
+    if jid in active_jid_to_run_id
+}
+
+# Build records for completed runs using canonical names
 records = []
 for run in completed_runs:
     rs = run.state.result_state.value if run.state and run.state.result_state else None
     if not rs or not run.start_time:
         continue
 
-    name = run.run_name or f"job-{run.job_id}"
+    # Skip pipelines and unknown runs not in the job registry
+    if run.job_id not in registry_id_to_name:
+        continue
+
+    name = registry_id_to_name[run.job_id]
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)
@@ -67,8 +102,12 @@ for run in completed_runs:
     )
     duration_min = (run_end - run_start).total_seconds() / 60
 
-    # Simplify to SUCCESS / FAILED
-    status = "SUCCESS" if rs == "SUCCESS" else "FAILED"
+    if rs == "SUCCESS":
+        status = "SUCCESS"
+    elif rs == "CANCELED":
+        status = "CANCELED"
+    else:
+        status = "FAILED"
 
     records.append(
         {
@@ -80,36 +119,119 @@ for run in completed_runs:
         }
     )
 
+# Add currently running jobs (so today's cell shows RUNNING)
+for run in active_runs:
+    if not run.start_time or run.job_id not in registry_id_to_name:
+        continue
+    name = registry_id_to_name[run.job_id]
+    run_start = dt.datetime.fromtimestamp(
+        run.start_time / 1000, tz=pytz.utc
+    ).astimezone(tz)
+    elapsed_min = (now_local - run_start).total_seconds() / 60
+    records.append(
+        {
+            "job": name,
+            "job_id": run.job_id,
+            "run_time": run_start,
+            "duration_min": round(elapsed_min, 1),
+            "status": "RUNNING",
+        }
+    )
+
 if not records:
-    st.info(f"No completed job runs found in the last {lookback_days} days.")
+    st.info(f"No job runs found in the last {lookback_days} days.")
     st.stop()
 
 df = pd.DataFrame(records)
-
-# Strip tz for Altair compatibility
 df["run_time"] = df["run_time"].apply(lambda x: x.replace(tzinfo=None))
+df["date"] = df["run_time"].dt.normalize()
+df_last = (
+    df.sort_values("run_time")
+    .groupby(["job", "date"], as_index=False)
+    .last()
+)
+
+# Only jobs that have runs in the period
+job_names = sorted(df_last["job"].unique())
+
+# Full grid: all jobs (from registry) × all days in lookback period
+all_dates = pd.date_range(
+    end=dt.datetime(now_local.year, now_local.month, now_local.day),
+    periods=lookback_days,
+    freq="D",
+)
+full_grid = pd.DataFrame(
+    [(job, date) for job in job_names for date in all_dates],
+    columns=["job", "date"],
+)
+df_last_dedup = df_last.drop_duplicates(["job", "date"])
+
+df_grid = full_grid.merge(
+    df_last_dedup[["job", "date", "status", "run_time", "duration_min"]],
+    on=["job", "date"],
+    how="left",
+).drop_duplicates(["job", "date"])
+df_grid["status"] = df_grid["status"].fillna("NO RUN")
 
 status_colors = {
     "SUCCESS": "#66BB6A",
     "FAILED": "#EF5350",
+    "CANCELED": "#707070",
+    "RUNNING": "#EFC550",
+    "NO RUN": "#EEEEEE",
 }
 
-job_names = sorted(df["job"].unique())
+# Worst status per job for label coloring (FAILED > CANCELED > RUNNING > SUCCESS > NO RUN)
+_priority = {"FAILED": 0, "CANCELED": 1, "RUNNING": 2, "SUCCESS": 3, "NO RUN": 4}
+df_worst = (
+    df_grid.groupby("job")["status"]
+    .agg(lambda s: min(s, key=lambda x: _priority.get(x, 9)))
+    .reset_index()
+    .rename(columns={"status": "worst_status"})
+)
 
-chart = (
-    alt.Chart(df)
-    .mark_point(size=80, filled=True)
+label_colors = {
+    "FAILED":  "#EF5350",
+    "CANCELED": "#707070",
+    "RUNNING":  "#EFC550",
+    "SUCCESS":  "#31333F",
+    "NO RUN":   "#AAAAAA",
+}
+
+LABEL_W = 200
+label_chart = (
+    alt.Chart(df_worst)
+    .mark_text(align="right", baseline="middle", fontSize=11, limit=LABEL_W - 5)
+    .encode(
+        y=alt.Y("job:N", sort=job_names, axis=None),
+        x=alt.value(LABEL_W),
+        text=alt.Text("job:N"),
+        color=alt.Color(
+            "worst_status:N",
+            scale=alt.Scale(
+                domain=list(label_colors.keys()),
+                range=list(label_colors.values()),
+            ),
+            legend=None,
+        ),
+    )
+    .properties(width=LABEL_W, height=alt.Step(25))
+)
+
+heatmap = (
+    alt.Chart(df_grid)
+    .mark_rect(stroke="white", strokeWidth=2)
     .encode(
         x=alt.X(
-            "run_time:T",
-            title="Run Date",
-            axis=alt.Axis(format="%Y-%m-%d", labelAngle=-45, grid=True),
+            "yearmonthdate(date):O",
+            title="Date",
+            axis=alt.Axis(labelAngle=-45, format="%m-%d"),
         ),
         y=alt.Y(
             "job:N",
             title="",
             sort=job_names,
-            axis=alt.Axis(labelLimit=300, grid=True),
+            axis=alt.Axis(labels=False, ticks=False, domain=False),
         ),
         color=alt.Color(
             "status:N",
@@ -122,11 +244,115 @@ chart = (
         tooltip=[
             "job",
             "status",
-            alt.Tooltip("run_time:T", title="Run Time", format="%Y-%m-%d %H:%M"),
+            alt.Tooltip("run_time:T", title="Last Run Time", format="%Y-%m-%d %H:%M"),
             alt.Tooltip("duration_min:Q", title="Duration (min)"),
         ],
     )
-    .properties(height=max(len(job_names) * 25, 200))
+    .properties(height=alt.Step(25))
 )
 
-st.altair_chart(chart, use_container_width=True)
+chart = (
+    alt.hconcat(label_chart, heatmap, spacing=0)
+    .resolve_scale(y="shared", color="independent")
+)
+
+st.markdown("""
+<style>
+.st-emotion-cache-13tburv {
+    min-height: 0 !important;
+}
+div[data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+    overflow: visible !important;
+}
+div[data-testid="column"],
+div[data-testid="stHorizontalBlock"] {
+    overflow: visible !important;
+}
+div[data-testid="element-container"]:has(.stButton) {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] {
+    height: 25px !important;
+    min-height: 25px !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+}
+button[data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(49,51,63,0.08) !important;
+    border: none !important;
+}
+div[data-testid="stButton"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    width: 100% !important;
+}
+div[data-testid="stButton"] > div,
+div[data-testid="stButton"] > div > div,
+div.stTooltipIcon,
+div[data-testid="stTooltipHoverTarget"] {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+div[data-testid="stTooltipHoverTarget"] {
+    justify-content: center !important;
+}
+div[data-testid="stButton"] > button,
+div[data-testid="stButton"] > div button {
+    width: 100% !important;
+    padding: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+[data-testid="stMarkdownContainer"] p {
+    font-size: 0.6rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+col_btn, col_chart = st.columns([0.02, 0.98])
+triggered_job = None
+
+with col_chart:
+    st.altair_chart(chart, use_container_width=True)
+
+with col_btn:
+    for jname in job_names:
+        jid = job_to_id.get(jname)
+        running_run_id = job_to_running_run_id.get(jname)
+        if running_run_id:
+            if st.button("■", key=f"stop_{jname}_{running_run_id}", use_container_width=True):
+                triggered_job = ("stop", jname, int(running_run_id))
+        elif jid:
+            if st.button("▶", key=f"run_{jname}_{jid}", use_container_width=True):
+                triggered_job = ("run", jname, int(jid))
+
+if triggered_job:
+    action, jname, id_ = triggered_job
+    if action == "run":
+        try:
+            run_result = w.jobs.run_now(job_id=id_)
+            st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
+        except Exception as e:
+            st.error(f"Failed to start **{jname}**: {e}")
+    else:
+        try:
+            w.jobs.cancel_run(run_id=id_)
+            st.success(f"Job **{jname}** stop requested — run ID: {id_}")
+        except Exception as e:
+            st.error(f"Failed to stop **{jname}**: {e}")
