@@ -43,7 +43,7 @@ end_ms = int(effective_end.timestamp() * 1000)
 STATE_COLORS = {
     "SCHEDULED": "#E0E0E0",  # gray
     "PENDING": "#FFD54F",  # yellow
-    "RUNNING": "#4CAF50",  # green
+    "RUNNING": "#2196F3",  # blue
     "SUCCESS": "#66BB6A",  # light green
     "FAILED": "#EF5350",  # red
     "TIMEDOUT": "#FF9800",  # orange
@@ -103,6 +103,7 @@ for run in runs:
     segments.append(
         {
             "job": name,
+            "job_id": run.job_id,
             "run_id": run.run_id,
             "state": display_state,
             "start": run_start,
@@ -166,6 +167,7 @@ with st.spinner("Fetching scheduled jobs…"):
                 scheduled_segments.append(
                     {
                         "job": job_name,
+                        "job_id": job.job_id,
                         "run_id": None,
                         "state": "SCHEDULED",
                         "start": fire_local,
@@ -185,6 +187,9 @@ df = pd.DataFrame(all_segments)
 
 job_names = sorted(df["job"].unique())
 selected_jobs = job_names
+
+# Build lookup: job name → job_id (before anchors are added)
+job_to_id = df.drop_duplicates("job").set_index("job")["job_id"].to_dict()
 
 # Strip timezone for Altair compatibility
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
@@ -207,6 +212,7 @@ anchors = pd.DataFrame(
     [
         {
             "job": anchor_jobs,
+            "job_id": None,
             "state": "TERMINATED",
             "start": day_start_naive,
             "end": day_start_naive,
@@ -215,6 +221,7 @@ anchors = pd.DataFrame(
         },
         {
             "job": anchor_jobs,
+            "job_id": None,
             "state": "TERMINATED",
             "start": day_end_naive,
             "end": day_end_naive,
@@ -247,7 +254,7 @@ timeline_chart = (
             alt.Tooltip("end:T", format="%H:%M:%S"),
         ],
     )
-    .properties(height=max(len(selected_jobs) * 40, 100))
+    .properties(height=alt.Step(40))
 )
 
 # --- Parallel jobs concurrency chart (5-min windows) ---
@@ -255,9 +262,7 @@ timeline_chart = (
 # Include all runs (actual + scheduled) for concurrency
 runs_df = df[df["_opacity"] > 0].copy()  # exclude invisible anchors
 
-if runs_df.empty:
-    combined = timeline_chart.properties(title="Jobs Execution Timeline")
-else:
+if not runs_df.empty:
     # Build 5-minute buckets spanning the full day (00:00 to 24:00)
     counts = []
     t = day_start_naive
@@ -288,7 +293,54 @@ else:
         )
         .properties(height=150)
     )
+    st.altair_chart(concurrency_chart, use_container_width=True)
 
-    combined = alt.vconcat(concurrency_chart, timeline_chart).resolve_scale(x="shared")
+st.markdown("""
+<style>
+.st-emotion-cache-rqdvt3 {
+    height: 20px !important;
+    min-height: 20px !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    line-height: 20px !important;
+}
+.st-emotion-cache-rqdvt3:hover {
+    background: rgba(49,51,63,0.08) !important;
+    border: none !important;
+}
+div[data-testid="stButton"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-st.altair_chart(combined, use_container_width=True)
+# Layout: narrow button column to the left, timeline chart to the right
+col_btn, col_chart = st.columns([0.05, 0.95])
+
+triggered_job = None
+
+with col_chart:
+    st.altair_chart(timeline_chart, use_container_width=True)
+
+with col_btn:
+    # top spacer to align buttons with chart's first job row
+    st.markdown('<div class="run-btns">', unsafe_allow_html=True)
+    for jname in job_names:
+        jid = job_to_id.get(jname)
+        if jid and st.button("▶", key=f"run_{jid}", help=jname, use_container_width=True):
+            triggered_job = (jname, int(jid))
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if triggered_job:
+    jname, jid = triggered_job
+    try:
+        run_result = w.jobs.run_now(job_id=jid)
+        st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
+    except Exception as e:
+        st.error(f"Failed to start **{jname}**: {e}")
