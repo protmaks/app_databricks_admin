@@ -272,7 +272,7 @@ timeline_chart = (
         color=alt.Color(
             "state:N",
             scale=alt.Scale(domain=domain, range=range_),
-            legend=alt.Legend(title="State"),
+            legend=None,
         ),
         opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
         tooltip=[
@@ -312,14 +312,16 @@ else:
                 "time:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)
             ),
             y=alt.Y(
-                "parallel_jobs:Q", title="Parallel Jobs", axis=alt.Axis(tickMinStep=1, format="d")
+                "parallel_jobs:Q",
+                title="Parallel Jobs",
+                axis=alt.Axis(tickMinStep=1, format="d"),
             ),
             tooltip=[
                 alt.Tooltip("time:T", title="Window", format="%H:%M"),
                 alt.Tooltip("parallel_jobs:Q", title="Jobs"),
             ],
         )
-        .properties(height=200)
+        .properties(height=150)
     )
 
     combined = alt.vconcat(timeline_chart, concurrency_chart).resolve_scale(x="shared")
