@@ -118,8 +118,27 @@ for run in completed_runs:
         }
     )
 
+# Add currently running jobs (so today's cell shows RUNNING)
+for run in active_runs:
+    if not run.start_time or run.job_id not in registry_id_to_name:
+        continue
+    name = registry_id_to_name[run.job_id]
+    run_start = dt.datetime.fromtimestamp(
+        run.start_time / 1000, tz=pytz.utc
+    ).astimezone(tz)
+    elapsed_min = (now_local - run_start).total_seconds() / 60
+    records.append(
+        {
+            "job": name,
+            "job_id": run.job_id,
+            "run_time": run_start,
+            "duration_min": round(elapsed_min, 1),
+            "status": "RUNNING",
+        }
+    )
+
 if not records:
-    st.info(f"No completed job runs found in the last {lookback_days} days.")
+    st.info(f"No job runs found in the last {lookback_days} days.")
     st.stop()
 
 df = pd.DataFrame(records)
@@ -191,7 +210,7 @@ chart = (
             alt.Tooltip("duration_min:Q", title="Duration (min)"),
         ],
     )
-    .properties(height=max(len(job_names) * 30, 200))
+    .properties(height=alt.Step(25))
 )
 
 st.markdown("""
@@ -213,15 +232,18 @@ div[data-testid="element-container"]:has(.stButton) {
     line-height: 0 !important;
 }
 button[data-testid="stBaseButton-secondary"] {
-    height: 30px !important;
-    min-height: 30px !important;
+    height: 25px !important;
+    min-height: 25px !important;
     padding: 0 4px !important;
     margin: 0 !important;
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
     font-size: 10px !important;
-    line-height: 30px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
 }
 button[data-testid="stBaseButton-secondary"]:hover {
     background: rgba(49,51,63,0.08) !important;
