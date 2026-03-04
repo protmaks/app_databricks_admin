@@ -30,6 +30,7 @@ menu = {
     ],
     "Jobs": [
         st.Page("menu/jobs_run_daily.py", title="Jobs Runs (Daily)", icon=":material/check_circle:",),
+        st.Page("menu/jobs_run_daily2.py", title="Jobs Runs (Daily) v2", icon=":material/check_circle:",),
         st.Page("menu/jobs_timeline_hourly.py", title="Jobs Timeline (Hourly)", icon=":material/timeline:"),
     ],
 }
