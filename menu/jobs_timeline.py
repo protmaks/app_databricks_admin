@@ -22,11 +22,12 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-col_date, col_tz = st.columns(2)
+col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=0, key="jobs_timeline_tz"
 )
+col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 tz = pytz.timezone(selected_tz)
 
 # Day boundaries in epoch ms (in selected timezone)
@@ -212,14 +213,8 @@ if not all_segments:
 
 df = pd.DataFrame(all_segments)
 
-# Job filter
 job_names = sorted(df["job"].unique())
-selected_jobs = st.multiselect("Jobs", options=job_names, default=job_names)
-if not selected_jobs:
-    st.warning("Select at least one job.")
-    st.stop()
-
-df = df[df["job"].isin(selected_jobs)]
+selected_jobs = job_names
 
 # Strip timezone for Altair compatibility
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
