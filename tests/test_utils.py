@@ -44,19 +44,19 @@ class TestQuartzToStandardCron:
 
 class TestEstimateWarehouseDbu:
     def test_known_size_small(self):
-        assert estimate_warehouse_dbu("Small", 1, 1) == (8, 8)
+        assert estimate_warehouse_dbu("Small", 1, 1) == (12, 12)
 
     def test_known_size_xlarge(self):
-        assert estimate_warehouse_dbu("X-Large", 1, 1) == (64, 64)
+        assert estimate_warehouse_dbu("X-Large", 1, 1) == (80, 80)
 
     def test_unknown_size_returns_zero(self):
         assert estimate_warehouse_dbu("Mega", 1, 1) == (0, 0)
 
     def test_min_neq_max_clusters(self):
-        assert estimate_warehouse_dbu("Medium", 1, 3) == (16, 48)
+        assert estimate_warehouse_dbu("Medium", 1, 3) == (24, 72)
 
     def test_none_clusters_default_to_one(self):
-        assert estimate_warehouse_dbu("Small", None, None) == (8, 8)
+        assert estimate_warehouse_dbu("Small", None, None) == (12, 12)
 
 
 # ── estimate_dbu ─────────────────────────────────────────────────
