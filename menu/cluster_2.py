@@ -14,8 +14,43 @@ COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
 tz = pytz.timezone(selected_tz)
 
+import time
+now_epoch_ms = int(time.time() * 1000)
+
 w = WorkspaceClient()
 warehouses = list(w.warehouses.list())
+
+# Find start times for running warehouses via backing clusters
+from databricks.sdk.service.compute import EventType, GetEventsOrder
+
+wh_start_times = {}
+all_clusters = list(w.clusters.list())
+
+for wh in warehouses:
+    if wh.state != WarehouseState.RUNNING or not wh.id:
+        continue
+    # Find backing cluster: match by name or tags
+    for c in all_clusters:
+        match = (c.cluster_name and wh.id in c.cluster_name) or \
+                (c.custom_tags and wh.id in str(c.custom_tags))
+        if not match:
+            continue
+        if c.last_state_loss_time:
+            wh_start_times[wh.id] = c.last_state_loss_time
+        else:
+            try:
+                for ev in w.clusters.events(
+                    cluster_id=c.cluster_id,
+                    event_types=[EventType.RUNNING],
+                    order=GetEventsOrder.DESC,
+                    limit=1,
+                ):
+                    if ev.timestamp:
+                        wh_start_times[wh.id] = ev.timestamp
+                    break
+            except Exception:
+                pass
+        break
 
 # Summary metrics
 total = len(warehouses)
@@ -42,15 +77,15 @@ STATE_COLORS = {
 
 # SQL Warehouse DBU rates per cluster (single cluster unit)
 WAREHOUSE_SIZE_DBU = {
-    "2X-Small": 2,
-    "X-Small": 4,
-    "Small": 8,
-    "Medium": 16,
-    "Large": 32,
-    "X-Large": 64,
-    "2X-Large": 128,
-    "3X-Large": 256,
-    "4X-Large": 512,
+    "2X-Small": 4,
+    "X-Small": 6,
+    "Small": 12,
+    "Medium": 24,
+    "Large": 40,
+    "X-Large": 80,
+    "2X-Large": 144,
+    "3X-Large": 272,
+    "4X-Large": 528,
 }
 
 def estimate_warehouse_dbu(cluster_size, min_clusters, max_clusters):
@@ -85,8 +120,8 @@ else:
         return w.warehouses.edit(**edit_kwargs)
 
     # Table header
-    header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5])
-    for col, h in zip(header_cols, [None, "Name", "Creator", "Size", "Min/Max", "DBU/hr (min-max)", "Auto-Stop", "New (min)", None]):
+    header_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
+    for col, h in zip(header_cols, [None, "Name", "Creator", "Size", "Min/Max", "DBU/hr (min-max)", "Auto-Stop", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
         if h:
             col.markdown(f"**{h}**")
 
@@ -106,8 +141,22 @@ else:
         min_dbu, max_dbu = estimate_warehouse_dbu(wh.cluster_size, wh.min_num_clusters, wh.max_num_clusters)
         dbu_str = f"{min_dbu} - {max_dbu}" if min_dbu != max_dbu else f"{min_dbu}"
 
+        # Start time & uptime
+        start_ms = wh_start_times.get(wh.id)
+        if wh.state == WarehouseState.RUNNING and start_ms:
+            start_utc = dt.datetime.fromtimestamp(start_ms / 1000, tz=pytz.utc)
+            start_str = start_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
+            total_secs = (now_epoch_ms - start_ms) // 1000
+            days, rem = divmod(total_secs, 86400)
+            hours, rem = divmod(rem, 3600)
+            mins = rem // 60
+            uptime = f"{days}d {hours}h {mins}m"
+        else:
+            start_str = "—"
+            uptime = "—"
+
         with st.form(key=f"as_form_{i}"):
-            row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5])
+            row_cols = st.columns([0.3, 1.5, 1, 0.7, 0.8, 0.9, 0.7, 0.6, 0.5, 1.2, 0.8])
             row_cols[0].write(indicator)
             row_cols[1].markdown(f"{wh.name}<br><span style='color:gray'>({wh.id})</span>", unsafe_allow_html=True)
             row_cols[2].write(wh.creator_name or "—")
@@ -117,6 +166,8 @@ else:
             row_cols[6].write(auto_stop)
             new_val = row_cols[7].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"as_{i}", label_visibility="collapsed")
             submitted = row_cols[8].form_submit_button("Apply")
+            row_cols[9].write(start_str)
+            row_cols[10].write(uptime)
         if submitted:
             try:
                 result = apply_auto_stop(wh.id, new_val)
