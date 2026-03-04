@@ -5,6 +5,8 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
 
+from menu.utils import estimate_dbu, format_uptime
+
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 st.header("All-Purpose Clusters")
@@ -49,14 +51,6 @@ now_epoch_ms = int(time.time() * 1000)
 # Build node_type_id -> num_cores map for DBU estimation
 node_types = {nt.node_type_id: nt.num_cores for nt in w.clusters.list_node_types().node_types}
 
-def estimate_dbu(driver_type, worker_type, min_workers, max_workers):
-    """Estimate DBU/hour range. All-purpose ≈ 1 DBU per 4 vCPUs."""
-    driver_cores = node_types.get(driver_type, 0)
-    worker_cores = node_types.get(worker_type, 0)
-    driver_dbu = driver_cores // 4
-    min_dbu = driver_dbu + min_workers * (worker_cores // 4)
-    max_dbu = driver_dbu + max_workers * (worker_cores // 4)
-    return min_dbu, max_dbu
 
 if not clusters:
     st.info("No clusters found.")
@@ -115,11 +109,11 @@ else:
         driver_type = c.driver_node_type_id or c.node_type_id
         if c.autoscale:
             workers = f"{c.autoscale.min_workers}-{c.autoscale.max_workers} (auto)"
-            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, c.autoscale.min_workers, c.autoscale.max_workers)
+            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, c.autoscale.min_workers, c.autoscale.max_workers, node_types)
         else:
             num_w = c.num_workers if c.num_workers is not None else 0
             workers = str(num_w)
-            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, num_w, num_w)
+            min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, num_w, num_w, node_types)
         dbu_str = f"{int(min_dbu)} - {int(max_dbu)}" if min_dbu != max_dbu else f"{int(min_dbu)}"
 
         # Auto-termination
@@ -137,10 +131,7 @@ else:
 
         if c.state == State.RUNNING and c.last_state_loss_time:
             total_secs = (now_epoch_ms - c.last_state_loss_time) // 1000
-            days, rem = divmod(total_secs, 86400)
-            hours, rem = divmod(rem, 3600)
-            mins = rem // 60
-            uptime = f"{days}d {hours}h {mins}m"
+            uptime = format_uptime(total_secs)
         else:
             uptime = "—"
 

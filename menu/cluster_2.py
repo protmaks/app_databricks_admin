@@ -5,6 +5,8 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import State as WarehouseState
 
+from menu.utils import estimate_warehouse_dbu
+
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 st.header("SQL Warehouses")
@@ -40,24 +42,6 @@ STATE_COLORS = {
     WarehouseState.DELETED: "⚫",
 }
 
-# SQL Warehouse DBU rates per cluster (single cluster unit)
-WAREHOUSE_SIZE_DBU = {
-    "2X-Small": 2,
-    "X-Small": 4,
-    "Small": 8,
-    "Medium": 16,
-    "Large": 32,
-    "X-Large": 64,
-    "2X-Large": 128,
-    "3X-Large": 256,
-    "4X-Large": 512,
-}
-
-def estimate_warehouse_dbu(cluster_size, min_clusters, max_clusters):
-    base = WAREHOUSE_SIZE_DBU.get(cluster_size, 0)
-    min_dbu = base * (min_clusters or 1)
-    max_dbu = base * (max_clusters or 1)
-    return min_dbu, max_dbu
 
 if not warehouses:
     st.info("No SQL warehouses found.")

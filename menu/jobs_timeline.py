@@ -7,6 +7,8 @@ import streamlit as st
 from croniter import croniter
 from databricks.sdk import WorkspaceClient
 
+from menu.utils import quartz_to_standard_cron, resolve_display_state
+
 st.header("Jobs Execution Timeline")
 
 COMMON_TZ = [
@@ -52,18 +54,6 @@ STATE_COLORS = {
 w = WorkspaceClient()
 
 
-def quartz_to_standard_cron(quartz_expr: str) -> str | None:
-    """Convert Quartz cron (sec min hr dom month dow [year]) to standard 5-field cron."""
-    parts = quartz_expr.strip().split()
-    if len(parts) < 6:
-        return None
-    # Drop seconds (field 0) and year (field 6) if present
-    parts = parts[1:6]
-    # Replace ? with *
-    parts = [p.replace("?", "*") for p in parts]
-    return " ".join(parts)
-
-
 with st.spinner("Fetching job runs…"):
     try:
         runs = list(
@@ -106,27 +96,7 @@ for run in runs:
         else None
     )
     rs = run.state.result_state.value if run.state and run.state.result_state else None
-
-    if lcs == "RUNNING":
-        display_state = "RUNNING"
-    elif lcs in ("PENDING", "QUEUED", "BLOCKED"):
-        display_state = "PENDING"
-    elif lcs == "TERMINATING":
-        display_state = "TERMINATING"
-    elif lcs == "INTERNAL_ERROR" or lcs == "SKIPPED":
-        display_state = "FAILED"
-    elif lcs == "TERMINATED":
-        state_map = {
-            "SUCCESS": "SUCCESS",
-            "FAILED": "FAILED",
-            "TIMEDOUT": "TIMEDOUT",
-            "CANCELED": "CANCELED",
-            "INTERNAL_ERROR": "FAILED",
-            "EXCLUDED": "CANCELED",
-        }
-        display_state = state_map.get(rs, "FAILED" if rs else lcs)
-    else:
-        display_state = lcs or "FAILED"
+    display_state = resolve_display_state(lcs, rs)
 
     name = run.run_name or f"job-{run.job_id}"
 

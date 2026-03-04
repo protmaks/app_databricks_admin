@@ -11,6 +11,8 @@ from databricks.sdk.service.compute import (
     GetEventsOrder,
 )
 
+from menu.utils import run_uses_cluster, resolve_display_state
+
 st.header("Cluster Jobs")
 
 COMMON_TZ = [
@@ -63,21 +65,6 @@ end_ms = int(effective_end.timestamp() * 1000)
 # Fixed x-axis domain: full day 00:00–24:00
 day_start_naive = day_start_local.replace(tzinfo=None)
 day_end_naive = day_start_naive + dt.timedelta(days=1)
-
-
-def run_uses_cluster(run, cluster_id):
-    """Check if a run used the given cluster (run-level or task-level)."""
-    if run.cluster_instance and run.cluster_instance.cluster_id == cluster_id:
-        return True
-    if run.cluster_spec and getattr(run.cluster_spec, "existing_cluster_id", None) == cluster_id:
-        return True
-    if run.tasks:
-        for task in run.tasks:
-            if task.cluster_instance and task.cluster_instance.cluster_id == cluster_id:
-                return True
-            if getattr(task, "existing_cluster_id", None) == cluster_id:
-                return True
-    return False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -269,27 +256,7 @@ for run in runs:
         else None
     )
     rs = run.state.result_state.value if run.state and run.state.result_state else None
-
-    if lcs == "RUNNING":
-        display_state = "RUNNING"
-    elif lcs in ("PENDING", "QUEUED", "BLOCKED"):
-        display_state = "PENDING"
-    elif lcs == "TERMINATING":
-        display_state = "TERMINATING"
-    elif lcs == "INTERNAL_ERROR" or lcs == "SKIPPED":
-        display_state = "FAILED"
-    elif lcs == "TERMINATED":
-        state_map = {
-            "SUCCESS": "SUCCESS",
-            "FAILED": "FAILED",
-            "TIMEDOUT": "TIMEDOUT",
-            "CANCELED": "CANCELED",
-            "INTERNAL_ERROR": "FAILED",
-            "EXCLUDED": "CANCELED",
-        }
-        display_state = state_map.get(rs, "FAILED" if rs else lcs)
-    else:
-        display_state = lcs or "FAILED"
+    display_state = resolve_display_state(lcs, rs)
 
     name = run.run_name or f"job-{run.job_id}"
 
