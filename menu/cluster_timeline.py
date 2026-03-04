@@ -12,17 +12,28 @@ from databricks.sdk.service.compute import (
 )
 
 st.header("Cluster State Timeline")
-
+MAX_CLUSTERS = 500
 COMMON_TZ = [
-    "UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London",
-    "Europe/Berlin", "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai",
+    "UTC",
+    "US/Eastern",
+    "US/Central",
+    "US/Pacific",
+    "Europe/London",
+    "Europe/Berlin",
+    "Europe/Moscow",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
     "Australia/Sydney",
 ]
 
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
-selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=0, key="timeline_tz")
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+selected_tz = col_tz.selectbox(
+    "Timezone", options=COMMON_TZ, index=0, key="timeline_tz"
+)
+col_teams.multiselect(
+    "Teams", options=[], default=[], disabled=True, help="Coming soon"
+)
 tz = pytz.timezone(selected_tz)
 
 # Day boundaries in epoch ms (in selected timezone)
@@ -35,9 +46,13 @@ end_ms = int(effective_end.timestamp() * 1000)
 
 w = WorkspaceClient()
 clusters = [
-    c for c in w.clusters.list()
-    if c.cluster_source not in (
-        ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE,
+    c
+    for c in w.clusters.list()
+    if c.cluster_source
+    not in (
+        ClusterSource.JOB,
+        ClusterSource.PIPELINE,
+        ClusterSource.PIPELINE_MAINTENANCE,
     )
 ]
 
@@ -58,17 +73,17 @@ EVENT_TO_STATE = {
     EventType.RUNNING: "RUNNING",
     EventType.RESTARTING: "RESTARTING",
     EventType.TERMINATING: "TERMINATING",
-    EventType.EDITED: None,          # keep previous state
+    EventType.EDITED: None,  # keep previous state
     EventType.RESIZING: None,
     EventType.DRIVER_HEALTHY: None,
 }
 
 STATE_COLORS = {
-    "STARTING":    "#FFD54F",   # bright yellow
-    "RUNNING":     "#4CAF50",   # bright green
-    "RESTARTING":  "#FF9800",   # bright orange
-    "ERROR":       "#EF5350",   # bright red
-    "UNKNOWN":     "#CE93D8",   # light purple
+    "STARTING": "#FFD54F",  # bright yellow
+    "RUNNING": "#4CAF50",  # bright green
+    "RESTARTING": "#FF9800",  # bright orange
+    "ERROR": "#EF5350",  # bright red
+    "UNKNOWN": "#CE93D8",  # light purple
 }
 
 segments = []
@@ -81,7 +96,7 @@ with st.spinner("Fetching cluster events…"):
                 start_time=start_ms,
                 end_time=end_ms,
                 order=GetEventsOrder.ASC,
-                limit=500,
+                limit=MAX_CLUSTERS,
             )
             events = list(resp) if resp else []
         except Exception:
@@ -94,7 +109,9 @@ with st.spinner("Fetching cluster events…"):
         cur_start = None
 
         for ev in events:
-            ts = dt.datetime.fromtimestamp(ev.timestamp / 1000, tz=pytz.utc).astimezone(tz)
+            ts = dt.datetime.fromtimestamp(ev.timestamp / 1000, tz=pytz.utc).astimezone(
+                tz
+            )
 
             new_state = None
             ev_type = ev.type
@@ -110,12 +127,14 @@ with st.spinner("Fetching cluster events…"):
                 continue
 
             if cur_state is not None and cur_start is not None:
-                segments.append({
-                    "cluster": c.cluster_name,
-                    "state": cur_state,
-                    "start": cur_start,
-                    "end": ts,
-                })
+                segments.append(
+                    {
+                        "cluster": c.cluster_name,
+                        "state": cur_state,
+                        "start": cur_start,
+                        "end": ts,
+                    }
+                )
 
             cur_state = new_state
             cur_start = ts
@@ -132,12 +151,14 @@ with st.spinner("Fetching cluster events…"):
                 live = c.state.value
                 if live in STATE_COLORS:
                     final_state = live
-            segments.append({
-                "cluster": c.cluster_name,
-                "state": final_state,
-                "start": cur_start,
-                "end": seg_end,
-            })
+            segments.append(
+                {
+                    "cluster": c.cluster_name,
+                    "state": final_state,
+                    "start": cur_start,
+                    "end": seg_end,
+                }
+            )
 
 _hidden = {"TERMINATED", "TERMINATING"}
 segments = [s for s in segments if s["state"] not in _hidden]
@@ -156,10 +177,22 @@ df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
 day_start_naive = day_start_local.replace(tzinfo=None)
 day_end_naive = day_start_naive + dt.timedelta(days=1)
 anchor_cluster = df["cluster"].iloc[0]
-anchors = pd.DataFrame([
-    {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_start_naive, "end": day_start_naive},
-    {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_end_naive, "end": day_end_naive},
-])
+anchors = pd.DataFrame(
+    [
+        {
+            "cluster": anchor_cluster,
+            "state": "UNKNOWN",
+            "start": day_start_naive,
+            "end": day_start_naive,
+        },
+        {
+            "cluster": anchor_cluster,
+            "state": "UNKNOWN",
+            "start": day_end_naive,
+            "end": day_end_naive,
+        },
+    ]
+)
 df = pd.concat([df, anchors], ignore_index=True)
 df["_opacity"] = df["state"].apply(lambda s: 0.0 if s == "UNKNOWN" else 1.0)
 
@@ -200,7 +233,9 @@ st.subheader("Daily Cluster Runtime (last 90 days)")
 today = dt.date.today()
 thirty_days_ago = today - dt.timedelta(days=90)
 range_start = tz.localize(dt.datetime.combine(thirty_days_ago, dt.time.min))
-range_end = min(tz.localize(dt.datetime.combine(today, dt.time.max)), dt.datetime.now(tz))
+range_end = min(
+    tz.localize(dt.datetime.combine(today, dt.time.max)), dt.datetime.now(tz)
+)
 range_start_ms = int(range_start.timestamp() * 1000)
 range_end_ms = int(range_end.timestamp() * 1000)
 
@@ -214,7 +249,7 @@ with st.spinner("Fetching 30-day cluster events…"):
                 start_time=range_start_ms,
                 end_time=range_end_ms,
                 order=GetEventsOrder.ASC,
-                limit=500,
+                limit=MAX_CLUSTERS,
             )
             events = list(resp) if resp else []
         except Exception:
@@ -227,7 +262,9 @@ with st.spinner("Fetching 30-day cluster events…"):
         cur_start = None
 
         for ev in events:
-            ts = dt.datetime.fromtimestamp(ev.timestamp / 1000, tz=pytz.utc).astimezone(tz)
+            ts = dt.datetime.fromtimestamp(ev.timestamp / 1000, tz=pytz.utc).astimezone(
+                tz
+            )
             ev_type = ev.type
             if ev_type in EVENT_TO_STATE:
                 new_state = EVENT_TO_STATE[ev_type]
@@ -246,8 +283,12 @@ with st.spinner("Fetching 30-day cluster events…"):
                 # Split across day boundaries
                 d = seg_start.date()
                 while d <= seg_end.date():
-                    day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
-                    day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                    day_begin = max(
+                        seg_start, tz.localize(dt.datetime.combine(d, dt.time.min))
+                    )
+                    day_finish = min(
+                        seg_end, tz.localize(dt.datetime.combine(d, dt.time.max))
+                    )
                     secs = (day_finish - day_begin).total_seconds()
                     if secs > 0:
                         daily_running[d] = daily_running.get(d, 0) + secs
@@ -262,8 +303,12 @@ with st.spinner("Fetching 30-day cluster events…"):
             seg_end = min(dt.datetime.now(tz), range_end)
             d = seg_start.date()
             while d <= seg_end.date():
-                day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
-                day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                day_begin = max(
+                    seg_start, tz.localize(dt.datetime.combine(d, dt.time.min))
+                )
+                day_finish = min(
+                    seg_end, tz.localize(dt.datetime.combine(d, dt.time.max))
+                )
                 secs = (day_finish - day_begin).total_seconds()
                 if secs > 0:
                     daily_running[d] = daily_running.get(d, 0) + secs

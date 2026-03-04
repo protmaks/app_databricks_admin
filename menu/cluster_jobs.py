@@ -12,7 +12,7 @@ from databricks.sdk.service.compute import (
 )
 
 from menu.utils import run_uses_cluster, resolve_display_state
-
+MAX_CLUSTERS = 500
 st.header("Cluster Jobs")
 
 COMMON_TZ = [
@@ -99,7 +99,7 @@ with st.spinner("Fetching cluster events…"):
             start_time=start_ms,
             end_time=end_ms,
             order=GetEventsOrder.ASC,
-            limit=500,
+            limit=MAX_CLUSTERS,
         )
         events = list(resp) if resp else []
     except Exception:
