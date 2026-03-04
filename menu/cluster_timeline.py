@@ -64,6 +64,7 @@ EVENT_TO_STATE = {
     EventType.TERMINATING: "TERMINATING",
     EventType.EDITED: None,          # keep previous state
     EventType.RESIZING: None,
+    EventType.DRIVER_HEALTHY: None,
 }
 
 STATE_COLORS = {
