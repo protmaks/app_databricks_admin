@@ -191,6 +191,12 @@ selected_jobs = job_names
 # Build lookup: job name → job_id (before anchors are added)
 job_to_id = df.drop_duplicates("job").set_index("job")["job_id"].to_dict()
 
+# Build lookup: job name → run_id for currently RUNNING jobs
+running_df = df[(df["state"] == "RUNNING") & (df["run_id"].notna())]
+job_to_running_run_id = (
+    running_df.drop_duplicates("job").set_index("job")["run_id"].to_dict()
+)
+
 # Strip timezone for Altair compatibility
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
 df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
@@ -389,13 +395,25 @@ with col_btn:
         )
     for jname in job_names:
         jid = job_to_id.get(jname)
-        if jid and st.button("▶", key=f"run_{jid}", use_container_width=True):
-            triggered_job = (jname, int(jid))
+        running_run_id = job_to_running_run_id.get(jname)
+        if running_run_id:
+            if st.button("■", key=f"stop_{running_run_id}", use_container_width=True):
+                triggered_job = ("stop", jname, int(running_run_id))
+        elif jid:
+            if st.button("▶", key=f"run_{jid}", use_container_width=True):
+                triggered_job = ("run", jname, int(jid))
 
 if triggered_job:
-    jname, jid = triggered_job
-    try:
-        run_result = w.jobs.run_now(job_id=jid)
-        st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
-    except Exception as e:
-        st.error(f"Failed to start **{jname}**: {e}")
+    action, jname, id_ = triggered_job
+    if action == "run":
+        try:
+            run_result = w.jobs.run_now(job_id=id_)
+            st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
+        except Exception as e:
+            st.error(f"Failed to start **{jname}**: {e}")
+    else:
+        try:
+            w.jobs.cancel_run(run_id=id_)
+            st.success(f"Job **{jname}** stop requested — run ID: {id_}")
+        except Exception as e:
+            st.error(f"Failed to stop **{jname}**: {e}")
