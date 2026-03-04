@@ -32,7 +32,7 @@ menu = {
         st.Page("menu/jobs_runs_daily.py", title="Jobs Runs (Daily) v1", icon=":material/check_circle:",),
         st.Page("menu/jobs_run_daily.py", title="Jobs Runs (Daily)", icon=":material/grid_view:"),
         st.Page("menu/jobs_timeline_hourly.py", title="Jobs Timeline (Hourly)", icon=":material/schedule:"),
-        st.Page("menu/jobs_fails_details.py", title="Jobs Fails Details", icon=":material/bug_report:"),
+        st.Page("menu/jobs_fails_details.py", title="Job Fails Details", icon=":material/bug_report:"),
     ],
 }
 
