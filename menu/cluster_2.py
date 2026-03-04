@@ -1,5 +1,4 @@
 import os
-import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient

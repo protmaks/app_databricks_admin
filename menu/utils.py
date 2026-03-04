@@ -48,7 +48,10 @@ def run_uses_cluster(run, cluster_id):
     """Check if a run used the given cluster (run-level or task-level)."""
     if run.cluster_instance and run.cluster_instance.cluster_id == cluster_id:
         return True
-    if run.cluster_spec and getattr(run.cluster_spec, "existing_cluster_id", None) == cluster_id:
+    if (
+        run.cluster_spec
+        and getattr(run.cluster_spec, "existing_cluster_id", None) == cluster_id
+    ):
         return True
     if run.tasks:
         for task in run.tasks:

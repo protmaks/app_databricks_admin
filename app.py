@@ -1,14 +1,8 @@
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
-from databricks import sql
-from databricks.sdk.core import Config
 import streamlit as st
 from pathlib import Path
-import pandas as pd
-import altair as alt
-import datetime as dt
 
 st.set_page_config(
     page_title="Databricks Cost and Optimization",
