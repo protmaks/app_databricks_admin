@@ -27,7 +27,12 @@ COMMON_TZ = [
 ]
 
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
-selected_date = col_date.date_input("Date", value=dt.date.today())
+_pending = st.session_state.pop("_timeline_date_pending", None)
+if "timeline_date" not in st.session_state:
+    st.session_state["timeline_date"] = dt.date.today()
+if _pending is not None:
+    st.session_state["timeline_date"] = _pending
+selected_date = col_date.date_input("Date", key="timeline_date")
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=0, key="timeline_tz"
 )
@@ -379,6 +384,7 @@ daily_wide = daily_df.pivot_table(
 daily_wide.columns.name = None
 _present_states = [s for s in _active_states if s in daily_wide.columns]
 daily_wide["total_hours"] = daily_wide[_present_states].sum(axis=1)
+daily_wide["date_str"] = daily_wide["date"].dt.strftime("%Y-%m-%d")
 
 _STATE_EMOJI = {
     "STARTING":    "🟡",
@@ -397,8 +403,11 @@ _tooltip = [
     for s in _present_states
 ]
 
-_bars = (
-    alt.Chart(daily_df)
+_date_sel = alt.selection_point(fields=["date_str"], on="click", name="date_sel", clear="dblclick")
+
+daily_chart = (
+    alt.Chart(daily_wide)
+    .transform_fold(_present_states, as_=["state", "runtime_hours"])
     .mark_bar()
     .encode(
         x=alt.X("date:T", title="Date", axis=alt.Axis(format="%b %d", labelAngle=-45)),
@@ -411,22 +420,31 @@ _bars = (
             ),
             legend=alt.Legend(title="State"),
         ),
-    )
-)
-
-_overlay = (
-    alt.Chart(daily_wide)
-    .mark_bar(opacity=0)
-    .encode(
-        x=alt.X("date:T"),
-        y=alt.Y("total_hours:Q"),
         tooltip=_tooltip,
     )
+    .add_params(_date_sel)
+    .properties(width="container", height=250)
 )
 
-daily_chart = alt.layer(_bars, _overlay).properties(width="container", height=250)
+_event = st.altair_chart(daily_chart, use_container_width=True, on_select="rerun")
 
-st.altair_chart(daily_chart, use_container_width=True)
+_sel_data = (_event.selection or {}).get("date_sel", [])
+_date_str_val = None
+if isinstance(_sel_data, list) and _sel_data:
+    _first = _sel_data[0]
+    _date_str_val = _first.get("date_str") if isinstance(_first, dict) else None
+elif isinstance(_sel_data, dict):
+    _pts = _sel_data.get("date_str", [])
+    _date_str_val = _pts[0] if _pts else None
+
+if _date_str_val:
+    try:
+        _clicked_date = dt.date.fromisoformat(_date_str_val)
+        if _clicked_date != selected_date:
+            st.session_state["_timeline_date_pending"] = _clicked_date
+            st.rerun()
+    except Exception:
+        pass
 
 st.subheader("Cluster State Timeline")
 if not segments:
