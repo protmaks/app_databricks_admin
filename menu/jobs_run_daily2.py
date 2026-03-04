@@ -35,7 +35,7 @@ end_ms = int(now_local.timestamp() * 1000)
 
 w = WorkspaceClient(profile="DEFAULT")
 
-with st.spinner("Fetching completed job runs…"):
+with st.spinner("Fetching data…"):
     try:
         completed_runs = list(
             w.jobs.list_runs(
@@ -49,14 +49,48 @@ with st.spinner("Fetching completed job runs…"):
         st.error(f"Failed to fetch runs: {e}")
         st.stop()
 
-# Build records for all completed runs
+    try:
+        all_jobs = list(w.jobs.list(expand_tasks=False))
+    except Exception as e:
+        st.error(f"Failed to fetch job list: {e}")
+        st.stop()
+
+    try:
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+    except Exception:
+        active_runs = []
+
+# Registry: job_id → canonical name from job settings
+registry_id_to_name = {
+    j.job_id: (j.settings.name or f"job-{j.job_id}")
+    for j in all_jobs if j.job_id
+}
+job_to_id = {name: jid for jid, name in registry_id_to_name.items()}
+
+# Match active runs by job_id
+active_jid_to_run_id = {}
+for run in active_runs:
+    if run.job_id and run.job_id not in active_jid_to_run_id:
+        active_jid_to_run_id[run.job_id] = run.run_id
+
+job_to_running_run_id = {
+    jname: active_jid_to_run_id[jid]
+    for jname, jid in job_to_id.items()
+    if jid in active_jid_to_run_id
+}
+
+# Build records for completed runs using canonical names
 records = []
 for run in completed_runs:
     rs = run.state.result_state.value if run.state and run.state.result_state else None
     if not rs or not run.start_time:
         continue
 
-    name = run.run_name or f"job-{run.job_id}"
+    # Skip pipelines and unknown runs not in the job registry
+    if run.job_id not in registry_id_to_name:
+        continue
+
+    name = registry_id_to_name[run.job_id]
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)
@@ -69,7 +103,7 @@ for run in completed_runs:
 
     if rs == "SUCCESS":
         status = "SUCCESS"
-    elif rs == ("CANCELED"):
+    elif rs == "CANCELED":
         status = "CANCELED"
     else:
         status = "FAILED"
@@ -89,11 +123,7 @@ if not records:
     st.stop()
 
 df = pd.DataFrame(records)
-
-# Strip tz for Altair compatibility
 df["run_time"] = df["run_time"].apply(lambda x: x.replace(tzinfo=None))
-
-# Add date column (date part only) and keep the last run per (job, day)
 df["date"] = df["run_time"].dt.normalize()
 df_last = (
     df.sort_values("run_time")
@@ -101,9 +131,10 @@ df_last = (
     .last()
 )
 
+# Only jobs that have runs in the period
 job_names = sorted(df_last["job"].unique())
 
-# Build full grid: all jobs × all days in the lookback period
+# Full grid: all jobs (from registry) × all days in lookback period
 all_dates = pd.date_range(
     end=dt.datetime(now_local.year, now_local.month, now_local.day),
     periods=lookback_days,
@@ -113,14 +144,20 @@ full_grid = pd.DataFrame(
     [(job, date) for job in job_names for date in all_dates],
     columns=["job", "date"],
 )
-df_grid = full_grid.merge(df_last[["job", "date", "status", "run_time", "duration_min"]], on=["job", "date"], how="left")
+df_last_dedup = df_last.drop_duplicates(["job", "date"])
+
+df_grid = full_grid.merge(
+    df_last_dedup[["job", "date", "status", "run_time", "duration_min"]],
+    on=["job", "date"],
+    how="left",
+).drop_duplicates(["job", "date"])
 df_grid["status"] = df_grid["status"].fillna("NO RUN")
 
 status_colors = {
     "SUCCESS": "#66BB6A",
     "FAILED": "#EF5350",
     "CANCELED": "#707070",
-    "TIMEOUT": "#FFA726",
+    "RUNNING": "#EFC550",
     "NO RUN": "#EEEEEE",
 }
 
@@ -137,7 +174,7 @@ chart = (
             "job:N",
             title="",
             sort=job_names,
-            axis=alt.Axis(labelLimit=300),
+            axis=alt.Axis(labelLimit=300, labelOverlap=False),
         ),
         color=alt.Color(
             "status:N",
@@ -157,4 +194,100 @@ chart = (
     .properties(height=max(len(job_names) * 30, 200))
 )
 
-st.altair_chart(chart, use_container_width=True)
+st.markdown("""
+<style>
+.st-emotion-cache-13tburv {
+    min-height: 0 !important;
+}
+div[data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+    overflow: visible !important;
+}
+div[data-testid="column"],
+div[data-testid="stHorizontalBlock"] {
+    overflow: visible !important;
+}
+div[data-testid="element-container"]:has(.stButton) {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    line-height: 30px !important;
+}
+button[data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(49,51,63,0.08) !important;
+    border: none !important;
+}
+div[data-testid="stButton"] {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    width: 100% !important;
+}
+div[data-testid="stButton"] > div,
+div[data-testid="stButton"] > div > div,
+div.stTooltipIcon,
+div[data-testid="stTooltipHoverTarget"] {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+div[data-testid="stTooltipHoverTarget"] {
+    justify-content: center !important;
+}
+div[data-testid="stButton"] > button,
+div[data-testid="stButton"] > div button {
+    width: 100% !important;
+    padding: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+[data-testid="stMarkdownContainer"] p {
+    font-size: 0.6rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+col_btn, col_chart = st.columns([0.02, 0.98])
+triggered_job = None
+
+with col_chart:
+    st.altair_chart(chart, use_container_width=True)
+
+with col_btn:
+    for jname in job_names:
+        jid = job_to_id.get(jname)
+        running_run_id = job_to_running_run_id.get(jname)
+        if running_run_id:
+            if st.button("■", key=f"stop_{jname}_{running_run_id}", use_container_width=True):
+                triggered_job = ("stop", jname, int(running_run_id))
+        elif jid:
+            if st.button("▶", key=f"run_{jname}_{jid}", use_container_width=True):
+                triggered_job = ("run", jname, int(jid))
+
+if triggered_job:
+    action, jname, id_ = triggered_job
+    if action == "run":
+        try:
+            run_result = w.jobs.run_now(job_id=id_)
+            st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
+        except Exception as e:
+            st.error(f"Failed to start **{jname}**: {e}")
+    else:
+        try:
+            w.jobs.cancel_run(run_id=id_)
+            st.success(f"Job **{jname}** stop requested — run ID: {id_}")
+        except Exception as e:
+            st.error(f"Failed to stop **{jname}**: {e}")
