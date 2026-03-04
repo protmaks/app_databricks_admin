@@ -148,6 +148,10 @@ if not segments:
 
 df = pd.DataFrame(segments)
 
+# Strip timezone for Altair compatibility
+df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
+df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
+
 # Add invisible anchors so the x-axis spans 00:00–24:00
 day_start_naive = day_start_local.replace(tzinfo=None)
 day_end_naive = day_start_naive + dt.timedelta(days=1)
