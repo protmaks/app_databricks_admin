@@ -67,8 +67,6 @@ STATE_COLORS = {
     "STARTING":    "#FFD54F",   # bright yellow
     "RUNNING":     "#4CAF50",   # bright green
     "RESTARTING":  "#FF9800",   # bright orange
-    "TERMINATING": "#B0BEC5",   # light blue-gray
-    "TERMINATED":  "#78909C",   # medium blue-gray
     "ERROR":       "#EF5350",   # bright red
     "UNKNOWN":     "#CE93D8",   # light purple
 }
@@ -141,11 +139,25 @@ with st.spinner("Fetching cluster events…"):
                 "end": seg_end,
             })
 
+_hidden = {"TERMINATED", "TERMINATING"}
+segments = [s for s in segments if s["state"] not in _hidden]
+
 if not segments:
     st.info("No events found for the selected date and clusters.")
     st.stop()
 
 df = pd.DataFrame(segments)
+
+# Add invisible anchors so the x-axis spans 00:00–24:00
+day_start_naive = day_start_local.replace(tzinfo=None)
+day_end_naive = day_start_naive + dt.timedelta(days=1)
+anchor_cluster = df["cluster"].iloc[0]
+anchors = pd.DataFrame([
+    {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_start_naive, "end": day_start_naive},
+    {"cluster": anchor_cluster, "state": "UNKNOWN", "start": day_end_naive, "end": day_end_naive},
+])
+df = pd.concat([df, anchors], ignore_index=True)
+df["_opacity"] = df["state"].apply(lambda s: 0.0 if s == "UNKNOWN" else 1.0)
 
 domain = list(STATE_COLORS.keys())
 range_ = list(STATE_COLORS.values())
@@ -154,7 +166,7 @@ chart = (
     alt.Chart(df)
     .mark_bar()
     .encode(
-        x=alt.X("start:T", title="Time"),
+        x=alt.X("start:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)),
         x2="end:T",
         y=alt.Y("cluster:N", title="", sort=alt.SortField("cluster")),
         color=alt.Color(
@@ -162,6 +174,7 @@ chart = (
             scale=alt.Scale(domain=domain, range=range_),
             legend=alt.Legend(title="State"),
         ),
+        opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
         tooltip=["cluster", "state", "start:T", "end:T"],
     )
     .properties(width="container", height=max(len(selected_clusters) * 40, 120))
