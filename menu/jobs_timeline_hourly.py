@@ -302,6 +302,11 @@ st.markdown("""
 }
 div[data-testid="stVerticalBlock"] {
     gap: 0 !important;
+    overflow: visible !important;
+}
+div[data-testid="column"],
+div[data-testid="stHorizontalBlock"] {
+    overflow: visible !important;
 }
 div[data-testid="element-container"]:has(.stButton) {
     margin: 0 !important;
@@ -367,7 +372,7 @@ with col_chart:
 with col_btn:
     for jname in job_names:
         jid = job_to_id.get(jname)
-        if jid and st.button("▶", key=f"run_{jid}", help=jname, use_container_width=True):
+        if jid and st.button("▶", key=f"run_{jid}", use_container_width=True):
             triggered_job = (jname, int(jid))
 
 if triggered_job:
