@@ -78,6 +78,11 @@ for run in runs:
     else:
         run_end = min(now_local, day_end_local)
 
+    # Ensure minimum display width of 5 minutes so short runs are visible
+    min_end = run_start + dt.timedelta(minutes=5)
+    if run_end < min_end:
+        run_end = min_end
+
     # Derive display state
     lcs = run.state.life_cycle_state.value if run.state and run.state.life_cycle_state else None
     rs = run.state.result_state.value if run.state and run.state.result_state else None
@@ -88,16 +93,20 @@ for run in runs:
         display_state = "PENDING"
     elif lcs == "TERMINATING":
         display_state = "TERMINATING"
+    elif lcs == "INTERNAL_ERROR" or lcs == "SKIPPED":
+        display_state = "FAILED"
     elif lcs == "TERMINATED":
         state_map = {
             "SUCCESS": "SUCCESS",
             "FAILED": "FAILED",
             "TIMEDOUT": "TIMEDOUT",
             "CANCELED": "CANCELED",
+            "INTERNAL_ERROR": "FAILED",
+            "EXCLUDED": "CANCELED",
         }
-        display_state = state_map.get(rs, rs or lcs)
+        display_state = state_map.get(rs, "FAILED" if rs else lcs)
     else:
-        display_state = lcs or "UNKNOWN"
+        display_state = lcs or "FAILED"
 
     name = run.run_name or f"job-{run.job_id}"
 
@@ -185,43 +194,35 @@ df = df[df["job"].isin(selected_jobs)]
 df["start"] = df["start"].apply(lambda x: x.replace(tzinfo=None))
 df["end"] = df["end"].apply(lambda x: x.replace(tzinfo=None))
 
+# Debug — remove after confirming
+st.write("DEBUG states:", df["state"].value_counts().to_dict())
+st.dataframe(df[["job", "state", "start", "end"]])
+
 domain = list(STATE_COLORS.keys())
 range_ = list(STATE_COLORS.values())
 
-# Layer scheduled bars behind actual run bars
-scheduled_df = df[df["state"] == "SCHEDULED"]
-actual_df = df[df["state"] != "SCHEDULED"]
+# Add opacity column: scheduled bars are semi-transparent
+df["_opacity"] = df["state"].apply(lambda s: 0.35 if s == "SCHEDULED" else 1.0)
 
-base_encode = dict(
-    x=alt.X("start:T", title="Time",
-            axis=alt.Axis(format="%H:%M", labelAngle=-45)),
-    x2=alt.X2("end:T"),
-    y=alt.Y("job:N", title="", sort=alt.SortField("job")),
-    color=alt.Color(
-        "state:N",
-        scale=alt.Scale(domain=domain, range=range_),
-        legend=alt.Legend(title="State"),
-    ),
-    tooltip=["job", "state",
-             alt.Tooltip("start:T", format="%H:%M:%S"),
-             alt.Tooltip("end:T", format="%H:%M:%S")],
-)
-
-background = (
-    alt.Chart(scheduled_df)
-    .mark_bar(opacity=0.35)
-    .encode(**base_encode)
-)
-
-foreground = (
-    alt.Chart(actual_df)
+chart = (
+    alt.Chart(df)
     .mark_bar()
-    .encode(**base_encode)
-)
-
-chart = (background + foreground).properties(
-    width="container",
-    height=max(len(selected_jobs) * 80, 200),
+    .encode(
+        x=alt.X("start:T", title="Time",
+                 axis=alt.Axis(format="%H:%M", labelAngle=-45)),
+        x2=alt.X2("end:T"),
+        y=alt.Y("job:N", title="", sort=alt.SortField("job")),
+        color=alt.Color(
+            "state:N",
+            scale=alt.Scale(domain=domain, range=range_),
+            legend=alt.Legend(title="State"),
+        ),
+        opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
+        tooltip=["job", "state",
+                 alt.Tooltip("start:T", format="%H:%M:%S"),
+                 alt.Tooltip("end:T", format="%H:%M:%S")],
+    )
+    .properties(width="container", height=max(len(selected_jobs) * 80, 200))
 )
 
 st.altair_chart(chart, use_container_width=True)
