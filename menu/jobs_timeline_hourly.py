@@ -254,7 +254,7 @@ timeline_chart = (
             alt.Tooltip("end:T", format="%H:%M:%S"),
         ],
     )
-    .properties(height=alt.Step(40))
+    .properties(height=alt.Step(25), padding={"top": 0, "bottom": 5, "left": 0, "right": 0})
 )
 
 # --- Parallel jobs concurrency chart (5-min windows) ---
@@ -297,18 +297,29 @@ if not runs_df.empty:
 
 st.markdown("""
 <style>
-.st-emotion-cache-rqdvt3 {
-    height: 20px !important;
-    min-height: 20px !important;
+.st-emotion-cache-13tburv {
+    min-height: 0 !important;
+}
+div[data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+}
+div[data-testid="element-container"]:has(.stButton) {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] {
+    height: 25px !important;
+    min-height: 25px !important;
     padding: 0 4px !important;
     margin: 0 !important;
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
     font-size: 10px !important;
-    line-height: 20px !important;
+    line-height: 25px !important;
 }
-.st-emotion-cache-rqdvt3:hover {
+button[data-testid="stBaseButton-secondary"]:hover {
     background: rgba(49,51,63,0.08) !important;
     border: none !important;
 }
@@ -316,12 +327,37 @@ div[data-testid="stButton"] {
     margin: 0 !important;
     padding: 0 !important;
     line-height: 1 !important;
+    width: 100% !important;
+}
+div[data-testid="stButton"] > div,
+div[data-testid="stButton"] > div > div,
+div.stTooltipIcon,
+div[data-testid="stTooltipHoverTarget"] {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+div[data-testid="stTooltipHoverTarget"] {
+    justify-content: center !important;
+}
+div[data-testid="stButton"] > button,
+div[data-testid="stButton"] > div button {
+    width: 100% !important;
+    padding: 0 !important;
+}
+button[data-testid="stBaseButton-secondary"] p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+[data-testid="stMarkdownContainer"] p {
+    font-size: 0.6rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # Layout: narrow button column to the left, timeline chart to the right
-col_btn, col_chart = st.columns([0.05, 0.95])
+col_btn, col_chart = st.columns([0.02, 0.98])
 
 triggered_job = None
 
@@ -329,13 +365,10 @@ with col_chart:
     st.altair_chart(timeline_chart, use_container_width=True)
 
 with col_btn:
-    # top spacer to align buttons with chart's first job row
-    st.markdown('<div class="run-btns">', unsafe_allow_html=True)
     for jname in job_names:
         jid = job_to_id.get(jname)
         if jid and st.button("▶", key=f"run_{jid}", help=jname, use_container_width=True):
             triggered_job = (jname, int(jid))
-    st.markdown('</div>', unsafe_allow_html=True)
 
 if triggered_job:
     jname, jid = triggered_job
