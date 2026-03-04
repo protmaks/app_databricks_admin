@@ -163,6 +163,8 @@ anchors = pd.DataFrame([
 df = pd.concat([df, anchors], ignore_index=True)
 df["_opacity"] = df["state"].apply(lambda s: 0.0 if s == "UNKNOWN" else 1.0)
 
+df["duration_min"] = ((df["end"] - df["start"]).dt.total_seconds() / 60).round(1)
+
 domain = list(STATE_COLORS.keys())
 range_ = list(STATE_COLORS.values())
 
@@ -179,9 +181,117 @@ chart = (
             legend=alt.Legend(title="State"),
         ),
         opacity=alt.Opacity("_opacity:Q", legend=None, scale=None),
-        tooltip=["cluster", "state", "start:T", "end:T"],
+        tooltip=[
+            "cluster",
+            "state",
+            alt.Tooltip("start:T", title="Start", format="%H:%M:%S"),
+            alt.Tooltip("end:T", title="End", format="%H:%M:%S"),
+            alt.Tooltip("duration_min:Q", title="Duration (min)"),
+        ],
     )
     .properties(width="container", height=max(len(selected_clusters) * 40, 120))
 )
 
 st.altair_chart(chart, use_container_width=True)
+
+# --- Daily cluster runtime (last 90 days) ---
+st.subheader("Daily Cluster Runtime (last 90 days)")
+
+today = dt.date.today()
+thirty_days_ago = today - dt.timedelta(days=90)
+range_start = tz.localize(dt.datetime.combine(thirty_days_ago, dt.time.min))
+range_end = min(tz.localize(dt.datetime.combine(today, dt.time.max)), dt.datetime.now(tz))
+range_start_ms = int(range_start.timestamp() * 1000)
+range_end_ms = int(range_end.timestamp() * 1000)
+
+daily_running = {}  # date -> total running seconds
+
+with st.spinner("Fetching 30-day cluster events…"):
+    for c in filtered:
+        try:
+            resp = w.clusters.events(
+                cluster_id=c.cluster_id,
+                start_time=range_start_ms,
+                end_time=range_end_ms,
+                order=GetEventsOrder.ASC,
+                limit=500,
+            )
+            events = list(resp) if resp else []
+        except Exception:
+            events = []
+
+        if not events:
+            continue
+
+        cur_state = None
+        cur_start = None
+
+        for ev in events:
+            ts = dt.datetime.fromtimestamp(ev.timestamp / 1000, tz=pytz.utc).astimezone(tz)
+            ev_type = ev.type
+            if ev_type in EVENT_TO_STATE:
+                new_state = EVENT_TO_STATE[ev_type]
+            elif ev_type in (EventType.PINNED, EventType.UNPINNED):
+                new_state = None
+            else:
+                new_state = ev_type.value if hasattr(ev_type, "value") else str(ev_type)
+
+            if new_state is None:
+                continue
+
+            # Close previous RUNNING segment
+            if cur_state == "RUNNING" and cur_start is not None:
+                seg_start = cur_start
+                seg_end = ts
+                # Split across day boundaries
+                d = seg_start.date()
+                while d <= seg_end.date():
+                    day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
+                    day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                    secs = (day_finish - day_begin).total_seconds()
+                    if secs > 0:
+                        daily_running[d] = daily_running.get(d, 0) + secs
+                    d += dt.timedelta(days=1)
+
+            cur_state = new_state
+            cur_start = ts
+
+        # Close last RUNNING segment
+        if cur_state == "RUNNING" and cur_start is not None:
+            seg_start = cur_start
+            seg_end = min(dt.datetime.now(tz), range_end)
+            d = seg_start.date()
+            while d <= seg_end.date():
+                day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
+                day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                secs = (day_finish - day_begin).total_seconds()
+                if secs > 0:
+                    daily_running[d] = daily_running.get(d, 0) + secs
+                d += dt.timedelta(days=1)
+
+# Build full 30-day range with zeros for missing days
+daily_rows = []
+d = thirty_days_ago
+while d <= today:
+    hours = daily_running.get(d, 0) / 3600
+    daily_rows.append({"date": d, "runtime_hours": round(hours, 2)})
+    d += dt.timedelta(days=1)
+
+daily_df = pd.DataFrame(daily_rows)
+daily_df["date"] = pd.to_datetime(daily_df["date"])
+
+daily_chart = (
+    alt.Chart(daily_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("date:T", title="Date", axis=alt.Axis(format="%b %d", labelAngle=-45)),
+        y=alt.Y("runtime_hours:Q", title="Runtime (hours)"),
+        tooltip=[
+            alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
+            alt.Tooltip("runtime_hours:Q", title="Hours", format=".1f"),
+        ],
+    )
+    .properties(width="container", height=250)
+)
+
+st.altair_chart(daily_chart, use_container_width=True)
