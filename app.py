@@ -23,6 +23,7 @@ menu = {
     "Jobs": [
         st.Page("menu/jobs_1.py", title="Jobs 1", icon=":material/settings:"),
         st.Page("menu/jobs_2.py", title="Jobs 2", icon=":material/account_tree:"),
+        st.Page("menu/jobs_timeline.py", title="Jobs Timeline", icon=":material/timeline:"),
     ]
 }
 
