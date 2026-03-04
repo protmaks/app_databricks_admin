@@ -32,6 +32,17 @@ selected_tz = col_tz.selectbox(
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 tz = pytz.timezone(selected_tz)
 
+if selected_date == dt.date.today():
+    st.markdown("""
+    <style>
+    [data-testid="stDateInput"] input {
+        border-color: #1976D2 !important;
+        color: #1976D2 !important;
+        font-weight: 600 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Day boundaries in epoch ms (in selected timezone)
 day_start_local = tz.localize(dt.datetime.combine(selected_date, dt.time.min))
 day_end_local = tz.localize(dt.datetime.combine(selected_date, dt.time.max))
@@ -238,7 +249,24 @@ anchors = pd.DataFrame(
 )
 df = pd.concat([df, anchors], ignore_index=True)
 
-timeline_chart = (
+# Alternating row background stripes
+sorted_jobs = sorted(df["job"].unique())
+stripe_df = pd.DataFrame([
+    {"job": jname, "start": day_start_naive, "end": day_end_naive}
+    for i, jname in enumerate(sorted_jobs)
+    if i % 2 == 0
+])
+bg_chart = (
+    alt.Chart(stripe_df)
+    .mark_rect(color="#F8F8F8", opacity=1.0)
+    .encode(
+        x=alt.X("start:T"),
+        x2=alt.X2("end:T"),
+        y=alt.Y("job:N", sort=alt.SortField("job")),
+    )
+)
+
+bars_chart = (
     alt.Chart(df)
     .mark_bar()
     .encode(
@@ -260,7 +288,12 @@ timeline_chart = (
             alt.Tooltip("end:T", format="%H:%M:%S"),
         ],
     )
+)
+
+timeline_chart = (
+    alt.layer(bg_chart, bars_chart)
     .properties(height=alt.Step(25))
+    .resolve_scale(color="independent")
 )
 
 # --- Parallel jobs concurrency chart (5-min windows) ---
@@ -393,15 +426,16 @@ with col_btn:
             f'<div style="height:{concurrency_height_px}px"></div>',
             unsafe_allow_html=True,
         )
-    for jname in job_names:
-        jid = job_to_id.get(jname)
-        running_run_id = job_to_running_run_id.get(jname)
-        if running_run_id:
-            if st.button("■", key=f"stop_{running_run_id}", use_container_width=True):
-                triggered_job = ("stop", jname, int(running_run_id))
-        elif jid:
-            if st.button("▶", key=f"run_{jid}", use_container_width=True):
-                triggered_job = ("run", jname, int(jid))
+    if selected_date == dt.date.today():
+        for jname in job_names:
+            jid = job_to_id.get(jname)
+            running_run_id = job_to_running_run_id.get(jname)
+            if running_run_id:
+                if st.button("■", key=f"stop_{running_run_id}", use_container_width=True):
+                    triggered_job = ("stop", jname, int(running_run_id))
+            elif jid:
+                if st.button("▶", key=f"run_{jid}", use_container_width=True):
+                    triggered_job = ("run", jname, int(jid))
 
 if triggered_job:
     action, jname, id_ = triggered_job
