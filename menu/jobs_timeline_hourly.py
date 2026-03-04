@@ -289,6 +289,6 @@ else:
         .properties(height=150)
     )
 
-    combined = alt.vconcat(timeline_chart, concurrency_chart).resolve_scale(x="shared")
+    combined = alt.vconcat(concurrency_chart, timeline_chart).resolve_scale(x="shared")
 
 st.altair_chart(combined, use_container_width=True)
