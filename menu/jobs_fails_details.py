@@ -181,17 +181,45 @@ if status_filter:
 
 df_view = df_view.sort_values("run_time", ascending=False)
 
-st.dataframe(
-    df_view[["job", "status", "run_time", "duration_min", "error"]].rename(columns={
-        "job":          "Job",
-        "status":       "Status",
-        "run_time":     "Run Time",
-        "duration_min": "Duration (min)",
-        "error":        "Error Message",
-    }),
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Run Time": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
-    },
+workspace_host = w.config.host.rstrip("/")
+
+STATUS_BADGE = {
+    "FAILED":   ("<span style='color:#EF5350;font-weight:600'>FAILED</span>"),
+    "TIMEDOUT": ("<span style='color:#FFA726;font-weight:600'>TIMEDOUT</span>"),
+}
+
+rows_html = ""
+for _, row in df_view.iterrows():
+    job_url = f"{workspace_host}/jobs/{row['job_id']}"
+    run_time = row["run_time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["run_time"]) else ""
+    duration = row["duration_min"] if pd.notna(row["duration_min"]) else ""
+    error = str(row["error"]) if pd.notna(row["error"]) else ""
+    badge = STATUS_BADGE.get(row["status"], row["status"])
+    rows_html += (
+        f"<tr>"
+        f"<td><a href='{job_url}' target='_blank'>{row['job']}</a></td>"
+        f"<td>{badge}</td>"
+        f"<td>{run_time}</td>"
+        f"<td style='text-align:right'>{duration}</td>"
+        f"<td style='color:#888;font-size:0.85em'>{error}</td>"
+        f"</tr>"
+    )
+
+st.markdown(
+    f"""
+    <style>
+    .fails-table {{width:100%;border-collapse:collapse;font-size:0.9rem}}
+    .fails-table th {{text-align:left;padding:6px 8px;border-bottom:2px solid #ddd;white-space:nowrap}}
+    .fails-table td {{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}}
+    .fails-table a {{text-decoration:none;color:#1976D2}}
+    .fails-table a:hover {{text-decoration:underline}}
+    </style>
+    <table class='fails-table'>
+      <thead><tr>
+        <th>Job</th><th>Status</th><th>Run Time</th><th>Duration (min)</th><th>Error Message</th>
+      </tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+    """,
+    unsafe_allow_html=True,
 )
