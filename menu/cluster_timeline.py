@@ -19,9 +19,10 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-col_date, col_tz = st.columns(2)
+col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
 selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=0, key="timeline_tz")
+col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 tz = pytz.timezone(selected_tz)
 
 # Day boundaries in epoch ms (in selected timezone)
@@ -45,12 +46,7 @@ if not clusters:
     st.stop()
 
 cluster_names = sorted(set(c.cluster_name for c in clusters))
-selected_clusters = st.multiselect(
-    "Clusters", options=cluster_names, default=cluster_names,
-)
-if not selected_clusters:
-    st.warning("Select at least one cluster.")
-    st.stop()
+selected_clusters = cluster_names
 
 selected_set = set(selected_clusters)
 filtered = [c for c in clusters if c.cluster_name in selected_set]
