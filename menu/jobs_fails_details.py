@@ -195,11 +195,12 @@ for _, row in df_view.iterrows():
     duration = row["duration_min"] if pd.notna(row["duration_min"]) else ""
     error = str(row["error"]) if pd.notna(row["error"]) else ""
     badge = STATUS_BADGE.get(row["status"], row["status"])
+    run_url = f"{workspace_host}/jobs/{row['job_id']}/runs/{row['run_id']}"
     rows_html += (
         f"<tr>"
         f"<td><a href='{job_url}' target='_blank'>{row['job']}</a></td>"
         f"<td>{badge}</td>"
-        f"<td>{run_time}</td>"
+        f"<td><a href='{run_url}' target='_blank'>{run_time}</a></td>"
         f"<td style='text-align:right'>{duration}</td>"
         f"<td style='color:#888;font-size:0.85em'>{error}</td>"
         f"</tr>"
