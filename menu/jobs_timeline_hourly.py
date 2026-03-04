@@ -254,7 +254,7 @@ timeline_chart = (
             alt.Tooltip("end:T", format="%H:%M:%S"),
         ],
     )
-    .properties(height=alt.Step(25), padding={"top": 0, "bottom": 5, "left": 0, "right": 0})
+    .properties(height=alt.Step(25))
 )
 
 # --- Parallel jobs concurrency chart (5-min windows) ---
@@ -279,7 +279,10 @@ if not runs_df.empty:
         .mark_line(point=False, interpolate="step-after")
         .encode(
             x=alt.X(
-                "time:T", title="Time", axis=alt.Axis(format="%H:%M", labelAngle=-45)
+                "time:T",
+                title="Time",
+                axis=alt.Axis(format="%H:%M", labelAngle=-45),
+                scale=alt.Scale(domain=[day_start_naive, day_end_naive]),
             ),
             y=alt.Y(
                 "parallel_jobs:Q",
@@ -293,7 +296,6 @@ if not runs_df.empty:
         )
         .properties(height=150)
     )
-    st.altair_chart(concurrency_chart, use_container_width=True)
 
 st.markdown("""
 <style>
@@ -361,15 +363,30 @@ button[data-testid="stBaseButton-secondary"] p {
 </style>
 """, unsafe_allow_html=True)
 
-# Layout: narrow button column to the left, timeline chart to the right
+# Layout: narrow button column to the left, charts to the right
 col_btn, col_chart = st.columns([0.02, 0.98])
 
 triggered_job = None
 
 with col_chart:
-    st.altair_chart(timeline_chart, use_container_width=True)
+    if not runs_df.empty:
+        combined_chart = (
+            alt.vconcat(concurrency_chart, timeline_chart, spacing=50)
+            .resolve_scale(x="shared")
+            .properties(padding={"top": 50, "bottom": 5, "left": 0, "right": 0})
+        )
+        st.altair_chart(combined_chart, use_container_width=True)
+    else:
+        st.altair_chart(timeline_chart, use_container_width=True)
 
 with col_btn:
+    if not runs_df.empty:
+        # Spacer to push buttons past the concurrency chart area
+        concurrency_height_px = 50 + 150 + 55 + 90  # top padding + chart + x-axis labels + spacing
+        st.markdown(
+            f'<div style="height:{concurrency_height_px}px"></div>',
+            unsafe_allow_html=True,
+        )
     for jname in job_names:
         jid = job_to_id.get(jname)
         if jid and st.button("▶", key=f"run_{jid}", use_container_width=True):
