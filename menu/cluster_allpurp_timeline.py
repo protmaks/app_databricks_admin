@@ -79,12 +79,13 @@ EVENT_TO_STATE = {
 }
 
 STATE_COLORS = {
-    "STARTING": "#FFD54F",  # bright yellow
-    "RUNNING": "#4CAF50",  # bright green
+    "STARTING": "#FFD54F",    # bright yellow
+    "RUNNING": "#4CAF50",     # bright green
     "RESTARTING": "#FF9800",  # bright orange
     "INACTIVITY": "#EF5350",  # bright red
-    "ERROR": "#EF5350",  # bright red
-    "UNKNOWN": "#CE93D8",  # light purple
+    "TERMINATING": "#EF9A9A", # light red
+    "ERROR": "#B71C1C",       # dark red
+    "UNKNOWN": "#CE93D8",     # light purple
 }
 
 segments = []
@@ -244,7 +245,7 @@ range_end = min(
 range_start_ms = int(range_start.timestamp() * 1000)
 range_end_ms = int(range_end.timestamp() * 1000)
 
-daily_running = {}  # date -> total running seconds
+daily_running = {}  # date -> {state -> seconds}
 
 with st.spinner("Fetching 30-day cluster events…"):
     for c in filtered:
@@ -281,29 +282,66 @@ with st.spinner("Fetching 30-day cluster events…"):
             if new_state is None:
                 continue
 
-            # Close previous RUNNING segment
-            if cur_state == "RUNNING" and cur_start is not None:
-                seg_start = cur_start
-                seg_end = ts
-                # Split across day boundaries
-                d = seg_start.date()
-                while d <= seg_end.date():
-                    day_begin = max(
-                        seg_start, tz.localize(dt.datetime.combine(d, dt.time.min))
-                    )
-                    day_finish = min(
-                        seg_end, tz.localize(dt.datetime.combine(d, dt.time.max))
-                    )
-                    secs = (day_finish - day_begin).total_seconds()
-                    if secs > 0:
-                        daily_running[d] = daily_running.get(d, 0) + secs
-                    d += dt.timedelta(days=1)
+            # Close previous segment; for TERMINATING split off INACTIVITY portion
+            if cur_state is not None and cur_state not in {"TERMINATED", "TERMINATING"} and cur_start is not None:
+                if ev_type == EventType.TERMINATING:
+                    inactivity_min = 0
+                    if ev.details:
+                        reason = getattr(ev.details, 'reason', None)
+                        if reason:
+                            params = getattr(reason, 'parameters', None) or {}
+                            try:
+                                inactivity_min = int(params.get('inactivity_duration_min', 0))
+                            except (ValueError, TypeError):
+                                inactivity_min = 0
+                    if inactivity_min > 0:
+                        inactivity_start = ts - dt.timedelta(minutes=inactivity_min)
+                        if inactivity_start < cur_start:
+                            inactivity_start = cur_start
+                        # Accumulate cur_state up to inactivity_start
+                        for seg_start, seg_end, seg_state in [
+                            (cur_start, inactivity_start, cur_state),
+                            (inactivity_start, ts, "INACTIVITY"),
+                        ]:
+                            d = seg_start.date()
+                            while d <= seg_end.date():
+                                day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
+                                day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                                secs = (day_finish - day_begin).total_seconds()
+                                if secs > 0:
+                                    day_dict = daily_running.setdefault(d, {})
+                                    day_dict[seg_state] = day_dict.get(seg_state, 0) + secs
+                                d += dt.timedelta(days=1)
+                    else:
+                        seg_start = cur_start
+                        seg_end = ts
+                        d = seg_start.date()
+                        while d <= seg_end.date():
+                            day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
+                            day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                            secs = (day_finish - day_begin).total_seconds()
+                            if secs > 0:
+                                day_dict = daily_running.setdefault(d, {})
+                                day_dict[cur_state] = day_dict.get(cur_state, 0) + secs
+                            d += dt.timedelta(days=1)
+                else:
+                    seg_start = cur_start
+                    seg_end = ts
+                    d = seg_start.date()
+                    while d <= seg_end.date():
+                        day_begin = max(seg_start, tz.localize(dt.datetime.combine(d, dt.time.min)))
+                        day_finish = min(seg_end, tz.localize(dt.datetime.combine(d, dt.time.max)))
+                        secs = (day_finish - day_begin).total_seconds()
+                        if secs > 0:
+                            day_dict = daily_running.setdefault(d, {})
+                            day_dict[cur_state] = day_dict.get(cur_state, 0) + secs
+                        d += dt.timedelta(days=1)
 
             cur_state = new_state
             cur_start = ts
 
-        # Close last RUNNING segment
-        if cur_state == "RUNNING" and cur_start is not None:
+        # Close last segment (any active state, skip TERMINATING to avoid runaway accumulation)
+        if cur_state is not None and cur_state not in {"TERMINATED", "TERMINATING"} and cur_start is not None:
             seg_start = cur_start
             seg_end = min(dt.datetime.now(tz), range_end)
             d = seg_start.date()
@@ -316,15 +354,19 @@ with st.spinner("Fetching 30-day cluster events…"):
                 )
                 secs = (day_finish - day_begin).total_seconds()
                 if secs > 0:
-                    daily_running[d] = daily_running.get(d, 0) + secs
+                    day_dict = daily_running.setdefault(d, {})
+                    day_dict[cur_state] = day_dict.get(cur_state, 0) + secs
                 d += dt.timedelta(days=1)
 
-# Build full 30-day range with zeros for missing days
+# Build full 90-day range with zeros for missing days, one row per (date, state)
+_active_states = [s for s in STATE_COLORS if s != "UNKNOWN"]
 daily_rows = []
 d = thirty_days_ago
 while d <= today:
-    hours = daily_running.get(d, 0) / 3600
-    daily_rows.append({"date": d, "runtime_hours": round(hours, 2)})
+    day_dict = daily_running.get(d, {})
+    for state in _active_states:
+        secs = day_dict.get(state, 0)
+        daily_rows.append({"date": d, "state": state, "runtime_hours": round(secs / 3600, 2)})
     d += dt.timedelta(days=1)
 
 daily_df = pd.DataFrame(daily_rows)
@@ -335,9 +377,18 @@ daily_chart = (
     .mark_bar()
     .encode(
         x=alt.X("date:T", title="Date", axis=alt.Axis(format="%b %d", labelAngle=-45)),
-        y=alt.Y("runtime_hours:Q", title="Runtime (hours)"),
+        y=alt.Y("runtime_hours:Q", title="Runtime (hours)", stack="zero"),
+        color=alt.Color(
+            "state:N",
+            scale=alt.Scale(
+                domain=_active_states,
+                range=[STATE_COLORS[s] for s in _active_states],
+            ),
+            legend=alt.Legend(title="State"),
+        ),
         tooltip=[
             alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
+            "state",
             alt.Tooltip("runtime_hours:Q", title="Hours", format=".1f"),
         ],
     )
