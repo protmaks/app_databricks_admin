@@ -14,6 +14,9 @@ st.set_page_config(
     page_title="Databricks Cost and Optimization",
     layout="wide",
 )
+logo_path = Path(__file__).parent / "assets" / "logo.png"
+if logo_path.exists():
+    st.logo(str(logo_path))
 
 menu = {
     "Help": [
@@ -44,6 +47,11 @@ menu = {
             "menu/jobs_last_run.py",
             title="Jobs Daily Runs",
             icon=":material/check_circle:",
+        ),
+        st.Page(
+            "menu/cluster_jobs.py",
+            title="Cluster Jobs",
+            icon=":material/memory:",
         ),
     ],
 }
