@@ -4,30 +4,43 @@
 
 A Streamlit-based dashboard for monitoring and optimizing Databricks workspace usage, costs, and cluster/job activity. Deployed as a [Databricks App](https://docs.databricks.com/en/dev-tools/databricks-apps/index.html).
 
-## Features
+## Apps Pages
 
 ### Active Compute
+This page exists to show how many clusters of each type are running in the workspace at a glance, and to provide quick access to start/stop and auto-termination settings.
+Clusters can be created by different people and they can forget to set the auto-termination or stop the cluster after use, which can lead to unnecessary costs. 
+✅ This page help an admin or CEO to quickly find the problem and solve it.
 
-- **All-Purpose Clusters** — View all non-job clusters with status, worker counts, estimated DBU/hr, auto-termination settings, and uptime. Start/stop clusters and edit auto-termination timeouts directly from the UI.
-- **SQL Warehouses** — Same operational view for SQL Warehouses, including inline auto-stop configuration.
-- **Apps** — Monitor running Databricks Apps and their compute state.
+This page helps you make a quick decision whether to stop a cluster that's been left on. In the future this page will have more statistics and recommendations to help optimize costs, but for the hackathon we focused on the core functionality of monitoring and managing active compute resources.
+- **All-Purpose Clusters** — View all non-job clusters with status, worker counts, estimated DBU/hr, ✅ auto-termination settings, and uptime. Start/stop clusters and edit auto-termination timeouts directly from the UI.
+- **SQL Warehouses** — Same operational view for SQL Warehouses, including inline ✅ auto-stop configuration.
+- **Apps** — Monitor running Databricks Apps and their compute state. 
+✅ *Note: The Databricks Apps do not have functionality to auto stop the apps. That is why this page is important.*
 - **Lakebase** — View active Lakebase database instances and their states.
 - **Jobs Compute** — See all currently active job cluster runs across the workspace.
 
 ### Compute Monitoring
 
 - **All-Purpose Daily Runs** — Gantt chart of cluster state transitions (STARTING, RUNNING, INACTIVITY, etc.) for a selected date. Includes inactivity periods before auto-termination. Also shows a stacked bar chart of daily runtime over the last 90 days, clickable to drill into a specific day.
-- **Jobs in All-Purpose Cluster** — Combined view for a specific cluster: its state timeline, all job runs on that cluster, and a concurrency chart — all on a shared time axis.
+You can quickly see daily details for how long the cluster has been running and doing some work or just being inactive. You can click on any day to drill down into this day and see detailed info for this day of each cluster that was used in that day.
+- **Jobs in All-Purpose Cluster** — Combined view for a specific cluster: its state timeline, all job runs on that cluster, and a concurrency chart — all on a shared time axis. This is a more detailed vies of the previos page with a detailed information on specific cluster. For now it just shows jobs that were running on the cluster. In the future the users' activity will be added for a more complete picture of the cluster usage.
 
 ### Jobs
 
-- **Job Settings** — Audit table of all jobs showing cluster type, schedule (with cron expression), Spark version, and ✅/❌ indicators for health thresholds, failure notifications, and access control. Hover for details.
+- **Job Settings** — Audit table of all jobs showing cluster type, schedule (with cron expression), Spark version, and ✅/❌ indicators for failure notifications, access control, and other health settings. Quickly spot misconfigured jobs at a glance — hover cells for details. Planned: a one-click or scheduled notification to alert the job owner about missing configuration.  
 - **Jobs Runs (Daily)** — Heatmap grid of job run statuses (SUCCESS / FAILED / CANCELED / RUNNING / NO RUN) per job per day over a configurable lookback period. Includes run/stop buttons per job.
-- **Jobs Timeline (Hourly)** — Gantt chart of all job runs for a selected date with a concurrency chart (5-minute buckets). Overlays projected scheduled runs from cron expressions for jobs that haven't executed yet.
-- **Job Fails Details** — Focused failure analysis: stacked bar chart of daily outcomes, and a detailed table of failed/timed-out runs with direct links to the job and run in the Databricks UI.
+- **Jobs Timeline (Hourly)** — Gantt chart of all job runs for a selected date with a concurrency chart (5-minute buckets). Overlays projected scheduled runs from cron expressions for jobs that haven't executed yet. This allows to understand when most jobs run during a day. This gives an admin an opportunity to optimize the schedule of the jobs to make sure that not all jobs are running at the same time and consuming all resources. The charts additionaly displayed scheduled jobs that haven't run yet.
+- **Job Fails Details** — Focused failure analysis: stacked bar chart of daily outcomes, and a detailed table of failed/timed-out runs with direct links to the job and run in the Databricks UI. The main focus of this chart is to show the latest unresolved problems with the jobs.
 
 All pages support timezone selection across 10 common zones.
 
+### Planned Features
+- Cost estimates in USD (with configurable $/DBU rates)
+- Team-level filters 
+- Mean job runtime to see which jobs are taking the longest time to complete and optimize them first
+- Optimization recommendations (e.g., flag clusters with high inactivity ratios and suggest lower auto-terminate settings with projected monthly savings)
+- Scheduled notebooks path check so that users can't scheduled notebooks from personal folders.
+- AI assistante to help resolve jobs failures by analyzing error messages and suggesting solutions from Databricks documentation and community forums.
 ---
 
 ## Deployment (Admin Guide)
