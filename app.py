@@ -19,10 +19,12 @@ st.logo(
 menu = {
     "Help": [
         st.Page("menu/description.py", title="APP Description", icon=":material/description:",),
+        st.Page("menu/main_statistic.py", title="Main Statistic", icon=":material/description:",),
     ],
     "Clusters Status and Settings": [
         st.Page("menu/clusters_allpurp.py", title="All-Purpose Clusters", icon=":material/desktop_windows:",        ),
         st.Page("menu/clusters_sqlwh.py", title="SQL Warehouses", icon=":material/cloud:"),
+        st.Page("menu/jobs_settings.py", title="Jobs Settings", icon=":material/check_circle:",),
     ],
     "Clusters Monitoring": [
         st.Page("menu/cluster_allpurp_timeline.py", title="All-Purpose Daily Runs", icon=":material/timeline:",),
