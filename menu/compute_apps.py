@@ -8,49 +8,6 @@ from databricks.sdk.service.apps import ApplicationState, ComputeState
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
-st.header("Databricks Apps")
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
-tz = pytz.timezone(selected_tz)
-
-now_epoch_ms = int(time.time() * 1000)
-
-w = WorkspaceClient(profile="DEFAULT")
-apps = list(w.apps.list())
-
-# Summary metrics
-total = len(apps)
-running = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.RUNNING)
-stopped = sum(1 for a in apps if a.compute_status and a.compute_status.state == ComputeState.STOPPED)
-starting = sum(
-    1
-    for a in apps
-    if a.compute_status and a.compute_status.state == ComputeState.STARTING
-    or a.app_status and a.app_status.state == ApplicationState.DEPLOYING
-)
-crashed = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.CRASHED)
-
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Total", total)
-col2.metric("Running", running)
-col3.metric("Stopped", stopped)
-col4.metric("Starting", starting)
-col5.metric("Crashed", crashed)
-
-st.divider()
-
 APP_STATE_COLORS = {
     ApplicationState.RUNNING: "🟢",
     ApplicationState.DEPLOYING: "🟡",
@@ -89,9 +46,32 @@ def can_stop(app):
         or app_st in (ApplicationState.RUNNING, ApplicationState.DEPLOYING)
 
 
-if not apps:
-    st.info("No Databricks Apps found.")
-else:
+def render(w, apps, tz, selected_tz, key_prefix="apps"):
+    """Render the Apps table. Can be called from other pages."""
+    total = len(apps)
+    running = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.RUNNING)
+    stopped = sum(1 for a in apps if a.compute_status and a.compute_status.state == ComputeState.STOPPED)
+    starting = sum(
+        1
+        for a in apps
+        if a.compute_status and a.compute_status.state == ComputeState.STARTING
+        or a.app_status and a.app_status.state == ApplicationState.DEPLOYING
+    )
+    crashed = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.CRASHED)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total", total)
+    col2.metric("Running", running)
+    col3.metric("Stopped", stopped)
+    col4.metric("Starting", starting)
+    col5.metric("Crashed", crashed)
+
+    st.divider()
+
+    if not apps:
+        st.info("No Databricks Apps found.")
+        return
+
     # Show action result from previous rerun
     if "app_action_result" in st.session_state:
         result = st.session_state.pop("app_action_result")
@@ -144,7 +124,7 @@ else:
         start_disabled = not can_start(app)
         stop_disabled = not can_stop(app)
 
-        if row_cols[6].button("▶", key=f"start_{i}", disabled=start_disabled, use_container_width=True, help="Start"):
+        if row_cols[6].button("▶", key=f"{key_prefix}_start_{i}", disabled=start_disabled, use_container_width=True, help="Start"):
             try:
                 w.apps.start(app.name)
                 st.session_state["app_action_result"] = {
@@ -158,7 +138,7 @@ else:
                 }
             st.rerun()
 
-        if row_cols[7].button("⏹", key=f"stop_{i}", disabled=stop_disabled, use_container_width=True, help="Stop"):
+        if row_cols[7].button("⏹", key=f"{key_prefix}_stop_{i}", disabled=stop_disabled, use_container_width=True, help="Stop"):
             try:
                 w.apps.stop(app.name)
                 st.session_state["app_action_result"] = {
@@ -173,3 +153,26 @@ else:
             st.rerun()
 
         st.divider()
+
+
+COMMON_TZ = [
+    "UTC",
+    "US/Eastern",
+    "US/Central",
+    "US/Pacific",
+    "Europe/London",
+    "Europe/Berlin",
+    "Europe/Moscow",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Australia/Sydney",
+]
+
+st.header("Databricks Apps")
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
+tz = pytz.timezone(selected_tz)
+
+w = WorkspaceClient(profile="DEFAULT")
+apps = list(w.apps.list())
+
+render(w, apps, tz, selected_tz, key_prefix="apps_page")

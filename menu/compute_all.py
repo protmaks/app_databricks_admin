@@ -48,22 +48,6 @@ def app_is_active(a):
         or comp_st in (AppComputeState.ACTIVE, AppComputeState.STARTING, AppComputeState.UPDATING)
     )
 
-def app_indicator(a):
-    app_st = a.app_status.state if a.app_status else None
-    comp_st = a.compute_status.state if a.compute_status else None
-    if app_st == ApplicationState.RUNNING or comp_st == AppComputeState.ACTIVE:
-        return "🟢"
-    return "🟡"
-
-def cluster_indicator(c):
-    return "🟢" if c.state == ClusterState.RUNNING else "🟡"
-
-def wh_indicator(wh):
-    return "🟢" if wh.state == WarehouseState.RUNNING else "🟡"
-
-def lb_indicator(inst):
-    return "🟢" if inst.state == DatabaseInstanceState.AVAILABLE else "🟡"
-
 allpurp_active = [
     c for c in all_clusters
     if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)
@@ -111,74 +95,20 @@ def fmt_epoch_ms(epoch_ms):
     return dt.datetime.fromtimestamp(epoch_ms / 1000, tz=pytz.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M")
 
 
-def fmt_iso(ts_str):
-    if not ts_str:
-        return "—"
-    try:
-        utc = dt.datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
-        return utc.astimezone(tz).strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return str(ts_str)
-
-
 # ── All-Purpose ───────────────────────────────────────────────────────────────
 with tab_ap:
-    if not allpurp_active:
-        st.info("No active All-Purpose clusters.")
-    else:
-        h = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 1.1, 0.8])
-        for col, label in zip(h, ["", "State", "Cluster Name", "Creator", "Workers", f"Start ({selected_tz})", "Uptime"]):
-            col.markdown(f"**{label}**")
-        st.divider()
-        for c in allpurp_active:
-            workers = (
-                f"{c.autoscale.min_workers}–{c.autoscale.max_workers} auto"
-                if c.autoscale else str(c.num_workers or 0)
-            )
-            start_ms = c.last_state_loss_time if c.state == ClusterState.RUNNING else None
-            row = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 1.1, 0.8])
-            row[0].write(cluster_indicator(c))
-            row[1].write(c.state.value if c.state else "—")
-            row[2].markdown(f"{c.cluster_name}<br><span style='color:gray;font-size:0.85em'>{c.cluster_id}</span>", unsafe_allow_html=True)
-            row[3].write(c.creator_user_name or "—")
-            row[4].write(workers)
-            row[5].write(fmt_epoch_ms(start_ms))
-            row[6].write(uptime_from_ms(start_ms))
-            st.divider()
+    from menu.compute_allpurp import render as render_allpurp
+    allpurp_all = [
+        c for c in all_clusters
+        if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)
+    ]
+    render_allpurp(w, allpurp_all, tz, selected_tz, key_prefix="compute_all_ap")
 
 
 # ── SQL Warehouses ────────────────────────────────────────────────────────────
 with tab_wh:
-    if not wh_active:
-        st.info("No active SQL Warehouses.")
-    else:
-        wh_start: dict[str, int] = {}
-        for wh in wh_active:
-            if wh.state != WarehouseState.RUNNING:
-                continue
-            for c in all_clusters:
-                if (c.cluster_name and wh.id in c.cluster_name) or (c.custom_tags and wh.id in str(c.custom_tags)):
-                    if c.last_state_loss_time:
-                        wh_start[wh.id] = c.last_state_loss_time
-                    break
-
-        h = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 0.7, 1.1, 0.8])
-        for col, label in zip(h, ["", "State", "Warehouse", "Creator", "Size", "Clusters", f"Start ({selected_tz})", "Uptime"]):
-            col.markdown(f"**{label}**")
-        st.divider()
-        for wh in wh_active:
-            start_ms = wh_start.get(wh.id)
-            min_max = f"{wh.min_num_clusters or '?'}/{wh.max_num_clusters or '?'}"
-            row = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 0.7, 1.1, 0.8])
-            row[0].write(wh_indicator(wh))
-            row[1].write(wh.state.value if wh.state else "—")
-            row[2].markdown(f"{wh.name}<br><span style='color:gray;font-size:0.85em'>{wh.id}</span>", unsafe_allow_html=True)
-            row[3].write(wh.creator_name or "—")
-            row[4].write(wh.cluster_size or "—")
-            row[5].write(min_max)
-            row[6].write(fmt_epoch_ms(start_ms))
-            row[7].write(uptime_from_ms(start_ms))
-            st.divider()
+    from menu.compute_sqlwh import render as render_wh
+    render_wh(w, warehouses, all_clusters, tz, selected_tz, key_prefix="compute_all_wh")
 
 
 # ── Jobs Compute ──────────────────────────────────────────────────────────────
@@ -197,7 +127,7 @@ with tab_job:
             )
             start_ms = c.last_state_loss_time if c.state == ClusterState.RUNNING else None
             row = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 1.1, 0.8])
-            row[0].write(cluster_indicator(c))
+            row[0].write("🟢" if c.state == ClusterState.RUNNING else "🟡")
             row[1].write(c.state.value if c.state else "—")
             row[2].markdown(f"{c.cluster_name}<br><span style='color:gray;font-size:0.85em'>{c.cluster_id}</span>", unsafe_allow_html=True)
             row[3].write(c.creator_user_name or "—")
@@ -209,44 +139,11 @@ with tab_job:
 
 # ── Apps ──────────────────────────────────────────────────────────────────────
 with tab_app:
-    if not apps_active:
-        st.info("No active Apps.")
-    else:
-        h = st.columns([0.15, 0.9, 1.5, 0.9, 2.0, 1.1])
-        for col, label in zip(h, ["", "App State", "App Name", "Compute", "URL", f"Updated ({selected_tz})"]):
-            col.markdown(f"**{label}**")
-        st.divider()
-        for a in apps_active:
-            app_st_str = a.app_status.state.value if (a.app_status and a.app_status.state) else "—"
-            compute_str = a.compute_status.state.value if (a.compute_status and a.compute_status.state) else "—"
-            url = a.url or "—"
-            row = st.columns([0.15, 0.9, 1.5, 0.9, 2.0, 1.1])
-            row[0].write(app_indicator(a))
-            row[1].write(app_st_str)
-            row[2].markdown(f"{a.name}<br><span style='color:gray;font-size:0.85em'>{a.description or ''}</span>", unsafe_allow_html=True)
-            row[3].write(compute_str)
-            row[4].markdown(f"[{url}]({url})" if url != "—" else "—")
-            row[5].write(fmt_iso(a.update_time))
-            st.divider()
+    from menu.compute_apps import render as render_apps
+    render_apps(w, apps, tz, selected_tz, key_prefix="compute_all_apps")
 
 
 # ── Lakebase ──────────────────────────────────────────────────────────────────
 with tab_lb:
-    if not lb_active:
-        st.info("No active Lakebase instances." if lb_instances else "Lakebase not available in this workspace.")
-    else:
-        h = st.columns([0.15, 0.7, 1.2, 0.6, 0.6, 1.8, 1.1])
-        for col, label in zip(h, ["", "State", "Instance", "PG Ver", "Capacity", "Read/Write DNS", f"Created ({selected_tz})"]):
-            col.markdown(f"**{label}**")
-        st.divider()
-        for inst in lb_active:
-            row = st.columns([0.15, 0.7, 1.2, 0.6, 0.6, 1.8, 1.1])
-            row[0].write(lb_indicator(inst))
-            row[1].write(inst.state.value if inst.state else "—")
-            row[2].write(inst.name)
-            row[3].write(inst.pg_version or "—")
-            row[4].write(inst.effective_capacity or inst.capacity or "—")
-            dns = inst.read_write_dns or "—"
-            row[5].code(dns, language=None) if dns != "—" else row[5].write("—")
-            row[6].write(fmt_iso(inst.creation_time))
-            st.divider()
+    from menu.compute_lakebase import render as render_lb
+    render_lb(w, lb_instances, tz, selected_tz, key_prefix="compute_all_lb")

@@ -4,8 +4,6 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.database import DatabaseInstance, DatabaseInstanceState
 
-st.header("Lakebase (Managed PostgreSQL)")
-
 COMMON_TZ = [
     "UTC",
     "US/Eastern",
@@ -18,27 +16,6 @@ COMMON_TZ = [
     "Asia/Shanghai",
     "Australia/Sydney",
 ]
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="lakebase_tz")
-tz = pytz.timezone(selected_tz)
-
-w = WorkspaceClient(profile="DEFAULT")
-instances = list(w.database.list_database_instances())
-
-# Summary metrics
-total = len(instances)
-available = sum(1 for i in instances if i.state == DatabaseInstanceState.AVAILABLE)
-stopped = sum(1 for i in instances if i.state == DatabaseInstanceState.STOPPED)
-starting = sum(1 for i in instances if i.state == DatabaseInstanceState.STARTING)
-error = sum(1 for i in instances if i.state == DatabaseInstanceState.FAILING_OVER)
-
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Total", total)
-col2.metric("Available", available)
-col3.metric("Stopped", stopped)
-col4.metric("Starting", starting)
-col5.metric("Failing Over", error)
-
-st.divider()
 
 STATE_COLORS = {
     DatabaseInstanceState.AVAILABLE: "🟢",
@@ -54,12 +31,9 @@ def get_indicator(inst):
     return STATE_COLORS.get(inst.state, "⚪")
 
 
-def is_stopped(inst):
-    return inst.state == DatabaseInstanceState.STOPPED or inst.effective_stopped
-
-
 def can_start(inst):
     return inst.state == DatabaseInstanceState.STOPPED
+
 
 def can_stop(inst):
     return inst.state in (
@@ -79,9 +53,27 @@ def fmt_time(ts_str, tz):
         return str(ts_str)
 
 
-if not instances:
-    st.info("No Lakebase instances found.")
-else:
+def render(w, instances, tz, selected_tz, key_prefix="lb"):
+    """Render the Lakebase table. Can be called from other pages."""
+    total = len(instances)
+    available = sum(1 for i in instances if i.state == DatabaseInstanceState.AVAILABLE)
+    stopped = sum(1 for i in instances if i.state == DatabaseInstanceState.STOPPED)
+    starting = sum(1 for i in instances if i.state == DatabaseInstanceState.STARTING)
+    error = sum(1 for i in instances if i.state == DatabaseInstanceState.FAILING_OVER)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total", total)
+    col2.metric("Available", available)
+    col3.metric("Stopped", stopped)
+    col4.metric("Starting", starting)
+    col5.metric("Failing Over", error)
+
+    st.divider()
+
+    if not instances:
+        st.info("No Lakebase instances found.")
+        return
+
     if "lb_action_result" in st.session_state:
         result = st.session_state.pop("lb_action_result")
         if result["success"]:
@@ -89,7 +81,6 @@ else:
         else:
             st.error(result["message"])
 
-    # Table header
     header_cols = st.columns([0.15, 1.0, 0.7, 0.5, 0.5, 1.8, 1.1, 1.1, 0.45, 0.45])
     for col, h in zip(
         header_cols,
@@ -122,7 +113,7 @@ else:
         row_cols[6].write(created_str)
         row_cols[7].write(creator)
 
-        if row_cols[8].button("▶", key=f"lb_start_{i}", disabled=not can_start(inst), use_container_width=True, help="Start"):
+        if row_cols[8].button("▶", key=f"{key_prefix}_start_{i}", disabled=not can_start(inst), use_container_width=True, help="Start"):
             try:
                 w.database.update_database_instance(
                     inst.name,
@@ -134,7 +125,7 @@ else:
                 st.session_state["lb_action_result"] = {"success": False, "message": f"Failed to start '{inst.name}': {e}"}
             st.rerun()
 
-        if row_cols[9].button("⏹", key=f"lb_stop_{i}", disabled=not can_stop(inst), use_container_width=True, help="Stop"):
+        if row_cols[9].button("⏹", key=f"{key_prefix}_stop_{i}", disabled=not can_stop(inst), use_container_width=True, help="Stop"):
             try:
                 w.database.update_database_instance(
                     inst.name,
@@ -147,3 +138,13 @@ else:
             st.rerun()
 
         st.divider()
+
+
+st.header("Lakebase (Managed PostgreSQL)")
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="lakebase_tz")
+tz = pytz.timezone(selected_tz)
+
+w = WorkspaceClient(profile="DEFAULT")
+instances = list(w.database.list_database_instances())
+
+render(w, instances, tz, selected_tz, key_prefix="lb_page")
