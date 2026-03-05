@@ -71,7 +71,7 @@ If the application needs to manage workspace resources (clusters, jobs), add the
 
 > **Note:** Every Databricks App creates its own identity. Granting Admin rights gives the app full control over the workspace.
 
-#### For Business Users (Run as User Identity)
+#### TBD - For Business Users (Run as User Identity)
 
 To allow the app to run under the identity of the logged-in user:
 
