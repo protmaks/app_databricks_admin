@@ -167,23 +167,24 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-st.header("Active Job Runs")
+if __name__ == "__main__":
+    st.header("Active Job Runs")
 
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="jobs_runs_tz")
-tz = pytz.timezone(selected_tz)
+    selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="jobs_runs_tz")
+    tz = pytz.timezone(selected_tz)
 
-w = make_workspace_client()
+    w = make_workspace_client()
 
-with st.spinner("Fetching active job runs..."):
+    with st.spinner("Fetching active job runs..."):
+        try:
+            active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+        except Exception as e:
+            st.error(f"Failed to fetch active runs: {e}")
+            st.stop()
+
     try:
-        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
-    except Exception as e:
-        st.error(f"Failed to fetch active runs: {e}")
-        st.stop()
+        cluster_states = build_cluster_states(list(w.clusters.list()))
+    except Exception:
+        cluster_states = {}
 
-try:
-    cluster_states = build_cluster_states(list(w.clusters.list()))
-except Exception:
-    cluster_states = {}
-
-render(w, active_runs, cluster_states, tz, selected_tz, key_prefix="jobs_runs_page")
+    render(w, active_runs, cluster_states, tz, selected_tz, key_prefix="jobs_runs_page")

@@ -217,12 +217,13 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
             st.rerun()
 
 
-st.header("SQL Warehouses")
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
-tz = pytz.timezone(selected_tz)
+if __name__ == "__main__":
+    st.header("SQL Warehouses")
+    selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
+    tz = pytz.timezone(selected_tz)
 
-w = make_workspace_client()
-warehouses = list(w.warehouses.list())
-all_clusters = list(w.clusters.list())
+    w = make_workspace_client()
+    warehouses = list(w.warehouses.list())
+    all_clusters = list(w.clusters.list())
 
-render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh_page")
+    render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh_page")

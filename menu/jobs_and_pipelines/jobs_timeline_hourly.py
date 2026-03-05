@@ -64,7 +64,7 @@ STATE_COLORS = {
 
 w = make_workspace_client()
 user_token = st.context.headers.get("X-Forwarded-Access-Token")
-user_w = WorkspaceClient(host=w.config.host, token=user_token) if user_token else w
+user_w = WorkspaceClient(host=w.config.host, token=user_token, client_id="", client_secret="") if user_token else w
 
 
 with st.spinner("Fetching job runs…"):

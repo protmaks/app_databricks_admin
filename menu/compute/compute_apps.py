@@ -167,11 +167,12 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-st.header("Databricks Apps")
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
-tz = pytz.timezone(selected_tz)
+if __name__ == "__main__":
+    st.header("Databricks Apps")
+    selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
+    tz = pytz.timezone(selected_tz)
 
-w = make_workspace_client()
-apps = list(w.apps.list())
+    w = make_workspace_client()
+    apps = list(w.apps.list())
 
-render(w, apps, tz, selected_tz, key_prefix="apps_page")
+    render(w, apps, tz, selected_tz, key_prefix="apps_page")

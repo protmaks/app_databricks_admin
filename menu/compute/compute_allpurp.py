@@ -176,12 +176,13 @@ def render(w, clusters, tz, selected_tz, key_prefix="allpurp"):
             st.rerun()
 
 
-st.header("All-Purpose Clusters")
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
-tz = pytz.timezone(selected_tz)
+if __name__ == "__main__":
+    st.header("All-Purpose Clusters")
+    selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
+    tz = pytz.timezone(selected_tz)
 
-w = make_workspace_client()
-clusters = [c for c in w.clusters.list()
-            if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
+    w = make_workspace_client()
+    clusters = [c for c in w.clusters.list()
+                if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
 
-render(w, clusters, tz, selected_tz, key_prefix="allpurp_page")
+    render(w, clusters, tz, selected_tz, key_prefix="allpurp_page")
