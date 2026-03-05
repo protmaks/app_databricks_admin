@@ -34,7 +34,8 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = make_workspace_client()
+user_token = st.context.headers.get("X-Forwarded-Access-Token")
+w = make_workspace_client(user_token=user_token)
 
 with st.spinner("Fetching completed job runs…"):
     try:

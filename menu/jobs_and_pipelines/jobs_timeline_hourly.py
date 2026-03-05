@@ -5,8 +5,6 @@ import pandas as pd
 import pytz
 import streamlit as st
 from croniter import croniter
-from databricks.sdk import WorkspaceClient
-
 from menu.compute.utils import quartz_to_standard_cron, resolve_display_state, make_workspace_client
 
 st.header("Jobs Execution Timeline")
@@ -62,9 +60,9 @@ STATE_COLORS = {
     "TERMINATING": "#CE93D8",  # purple
 }
 
-w = make_workspace_client()
 user_token = st.context.headers.get("X-Forwarded-Access-Token")
-user_w = WorkspaceClient(host=w.config.host, token=user_token, client_id="", client_secret="") if user_token else w
+w = make_workspace_client(user_token=user_token)
+user_w = w
 
 
 with st.spinner("Fetching job runs…"):

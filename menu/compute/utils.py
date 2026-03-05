@@ -4,21 +4,27 @@ import os
 from databricks.sdk import WorkspaceClient
 
 
-def make_workspace_client() -> WorkspaceClient:
-    """Return a WorkspaceClient using SP credentials in Databricks Apps,
-    falling back to profile='DEFAULT' for local development."""
-    if os.getenv("DATABRICKS_CLIENT_ID"):
-        # Databricks Apps injects DATABRICKS_TOKEN alongside OAuth creds, causing a conflict.
-        # Temporarily remove it so the SDK uses only OAuth (client credentials).
-        _saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
+def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
+    """Return a WorkspaceClient for Databricks Apps or local development.
+
+    In Databricks Apps pass the forwarded user token (X-Forwarded-Access-Token)
+    to act on behalf of the logged-in user.  Falls back to SP OAuth or a local
+    DEFAULT profile when no token is supplied.
+    """
+    host = os.getenv("DATABRICKS_HOST")
+    if user_token and host:
+        # Use the end-user's forwarded access token (recommended by Databricks Apps docs)
+        return WorkspaceClient(host=host, token=user_token)
+    if host and os.getenv("DATABRICKS_CLIENT_ID"):
+        # SP OAuth — pop DATABRICKS_TOKEN so the SDK doesn't see a conflicting PAT
+        _saved = os.environ.pop("DATABRICKS_TOKEN", None)
         try:
             client = WorkspaceClient()
         finally:
-            if _saved_token is not None:
-                os.environ["DATABRICKS_TOKEN"] = _saved_token
+            if _saved is not None:
+                os.environ["DATABRICKS_TOKEN"] = _saved
         return client
     if os.getenv("DATABRICKS_TOKEN"):
-        # Only PAT available
         return WorkspaceClient()
     return WorkspaceClient(profile="DEFAULT")
 

@@ -4,7 +4,6 @@ import altair as alt
 import pandas as pd
 import pytz
 import streamlit as st
-from databricks.sdk import WorkspaceClient
 from menu.compute.utils import make_workspace_client
 
 st.header("Job Runs History")
@@ -35,9 +34,9 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = make_workspace_client()
 user_token = st.context.headers.get("X-Forwarded-Access-Token")
-user_w = WorkspaceClient(host=w.config.host, token=user_token, client_id="", client_secret="") if user_token else w
+w = make_workspace_client(user_token=user_token)
+user_w = w
 
 with st.spinner("Fetching data…"):
     try:
