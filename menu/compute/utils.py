@@ -8,8 +8,15 @@ def make_workspace_client() -> WorkspaceClient:
     """Return a WorkspaceClient using SP credentials in Databricks Apps,
     falling back to profile='DEFAULT' for local development."""
     if os.getenv("DATABRICKS_CLIENT_ID"):
-        # OAuth SP credentials available — let SDK pick them up from env vars
-        return WorkspaceClient()
+        # Databricks Apps injects DATABRICKS_TOKEN alongside OAuth creds, causing a conflict.
+        # Temporarily remove it so the SDK uses only OAuth (client credentials).
+        _saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
+        try:
+            client = WorkspaceClient()
+        finally:
+            if _saved_token is not None:
+                os.environ["DATABRICKS_TOKEN"] = _saved_token
+        return client
     if os.getenv("DATABRICKS_TOKEN"):
         # Only PAT available
         return WorkspaceClient()
