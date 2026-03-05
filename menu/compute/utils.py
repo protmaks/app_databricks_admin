@@ -3,6 +3,22 @@ import os
 
 from databricks.sdk import WorkspaceClient
 
+COMMON_TZ = [
+    "UTC",
+    "US/Eastern",
+    "US/Central",
+    "US/Pacific",
+    "Europe/London",
+    "Europe/Berlin",
+    "Europe/Moscow",
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Australia/Sydney",
+]
+
+# Maximum number of events to fetch per cluster from the Databricks Events API
+MAX_CLUSTER_EVENTS = 500
+
 
 def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
     """Return a WorkspaceClient for Databricks Apps or local development.

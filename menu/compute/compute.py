@@ -1,13 +1,10 @@
 import pytz
 import streamlit as st
-from menu.compute.utils import make_workspace_client
+from menu.compute.utils import make_workspace_client, COMMON_TZ
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
 from databricks.sdk.service.database import DatabaseInstanceState
-
-COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
-             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
 
 st.header("Active Compute")
 

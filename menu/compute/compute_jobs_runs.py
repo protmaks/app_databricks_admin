@@ -3,7 +3,7 @@ import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from menu.compute.utils import make_workspace_client
+from menu.compute.utils import make_workspace_client, COMMON_TZ
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 
 LIFECYCLE_COLORS = {
@@ -153,19 +153,6 @@ def render(w, active_runs, cluster_states, tz, selected_tz, key_prefix="jobs_run
 
         st.divider()
 
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 if __name__ == "__main__":
     st.header("Active Job Runs")

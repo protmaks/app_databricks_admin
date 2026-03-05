@@ -6,12 +6,9 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
 
-from menu.compute.utils import estimate_dbu, format_uptime, make_workspace_client
+from menu.compute.utils import estimate_dbu, format_uptime, make_workspace_client, COMMON_TZ
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
-
-COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
-             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
 
 STATE_COLORS = {
     State.RUNNING: "🟢",

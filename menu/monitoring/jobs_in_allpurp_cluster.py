@@ -11,22 +11,8 @@ from databricks.sdk.service.compute import (
     GetEventsOrder,
 )
 
-from menu.compute.utils import run_uses_cluster, resolve_display_state, make_workspace_client
-MAX_CLUSTERS = 500
+from menu.compute.utils import run_uses_cluster, resolve_display_state, make_workspace_client, COMMON_TZ, MAX_CLUSTER_EVENTS
 st.header("Cluster Jobs")
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 col_date, col_tz, col_cluster = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
@@ -100,7 +86,7 @@ with st.spinner("Fetching cluster events…"):
             start_time=start_ms,
             end_time=end_ms,
             order=GetEventsOrder.ASC,
-            limit=MAX_CLUSTERS,
+            limit=MAX_CLUSTER_EVENTS,
         )
         events = list(resp) if resp else []
     except Exception:

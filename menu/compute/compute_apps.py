@@ -4,7 +4,7 @@ import time
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from menu.compute.utils import make_workspace_client
+from menu.compute.utils import make_workspace_client, COMMON_TZ
 from databricks.sdk.service.apps import ApplicationState, ComputeState
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
@@ -153,19 +153,6 @@ def render(w, apps, tz, selected_tz, key_prefix="apps"):
 
         st.divider()
 
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 if __name__ == "__main__":
     st.header("Databricks Apps")

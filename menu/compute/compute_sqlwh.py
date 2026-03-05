@@ -7,7 +7,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.compute import EventType, GetEventsOrder
 
-from menu.compute.utils import estimate_warehouse_dbu, make_workspace_client
+from menu.compute.utils import estimate_warehouse_dbu, make_workspace_client, COMMON_TZ
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
@@ -19,20 +19,6 @@ STATE_COLORS = {
     WarehouseState.DELETING: "🔴",
     WarehouseState.DELETED: "⚫",
 }
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
-
 
 def _build_start_times(w, warehouses, all_clusters):
     wh_start_times = {}

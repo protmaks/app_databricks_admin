@@ -5,7 +5,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from menu.compute.utils import make_workspace_client
+from menu.compute.utils import make_workspace_client, COMMON_TZ, MAX_CLUSTER_EVENTS
 from databricks.sdk.service.compute import (
     ClusterSource,
     EventType,
@@ -13,19 +13,6 @@ from databricks.sdk.service.compute import (
 )
 
 st.header("Cluster State Timeline")
-MAX_CLUSTERS = 500
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 _pending = st.session_state.pop("_timeline_date_pending", None)
@@ -104,7 +91,7 @@ with st.spinner("Fetching cluster events…"):
                 start_time=start_ms,
                 end_time=end_ms,
                 order=GetEventsOrder.ASC,
-                limit=MAX_CLUSTERS,
+                limit=MAX_CLUSTER_EVENTS,
             )
             events = list(resp) if resp else []
         except Exception:
@@ -261,7 +248,7 @@ with st.spinner("Fetching 30-day cluster events…"):
                 start_time=range_start_ms,
                 end_time=range_end_ms,
                 order=GetEventsOrder.ASC,
-                limit=MAX_CLUSTERS,
+                limit=MAX_CLUSTER_EVENTS,
             )
             events = list(resp) if resp else []
         except Exception:

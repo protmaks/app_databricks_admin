@@ -5,22 +5,9 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from menu.compute.utils import make_workspace_client
+from menu.compute.utils import make_workspace_client, COMMON_TZ
 
 st.header("Job Fails Details")
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 col_tz, col_days, col_teams = st.columns([0.12, 0.63, 0.25])
 selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=0, key="fails_tz")

@@ -5,22 +5,9 @@ import pandas as pd
 import pytz
 import streamlit as st
 from croniter import croniter
-from menu.compute.utils import quartz_to_standard_cron, resolve_display_state, make_workspace_client
+from menu.compute.utils import quartz_to_standard_cron, resolve_display_state, make_workspace_client, COMMON_TZ
 
 st.header("Jobs Execution Timeline")
-
-COMMON_TZ = [
-    "UTC",
-    "US/Eastern",
-    "US/Central",
-    "US/Pacific",
-    "Europe/London",
-    "Europe/Berlin",
-    "Europe/Moscow",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Australia/Sydney",
-]
 
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
