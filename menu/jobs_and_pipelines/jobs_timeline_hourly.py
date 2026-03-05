@@ -7,7 +7,7 @@ import streamlit as st
 from croniter import croniter
 from databricks.sdk import WorkspaceClient
 
-from menu.utils import quartz_to_standard_cron, resolve_display_state
+from menu.compute.utils import quartz_to_standard_cron, resolve_display_state
 
 st.header("Jobs Execution Timeline")
 

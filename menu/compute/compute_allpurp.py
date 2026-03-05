@@ -1,61 +1,60 @@
 import os
+import time
 import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
 
-from menu.utils import estimate_dbu, format_uptime
+from menu.compute.utils import estimate_dbu, format_uptime
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
-st.header("All-Purpose Clusters")
-
 COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
              "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
-tz = pytz.timezone(selected_tz)
-
-w = WorkspaceClient(profile="DEFAULT")
-clusters = [c for c in w.clusters.list()
-            if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
-
-# Summary metrics
-total = len(clusters)
-running = sum(1 for c in clusters if c.state == State.RUNNING)
-terminated = sum(1 for c in clusters if c.state == State.TERMINATED)
-errors = sum(1 for c in clusters if c.state == State.ERROR)
-
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total", total)
-col2.metric("Running", running)
-col3.metric("Terminated", terminated)
-col4.metric("Errors", errors)
-
-st.divider()
 
 STATE_COLORS = {
     State.RUNNING: "🟢",
     State.PENDING: "🟡",
     State.RESIZING: "🟡",
     State.RESTARTING: "🟡",
-    State.TERMINATED: "🔴",
+    State.TERMINATED: "🔘",
     State.TERMINATING: "🟠",
     State.ERROR: "🔴",
     State.UNKNOWN: "⚪",
 }
 
-import time
-now_epoch_ms = int(time.time() * 1000)
 
-# Build node_type_id -> num_cores map for DBU estimation
-node_types = {nt.node_type_id: nt.num_cores for nt in w.clusters.list_node_types().node_types}
+def render(w, clusters, tz, selected_tz, key_prefix="allpurp"):
+    """Render the All-Purpose Clusters table. Can be called from other pages."""
+    now_epoch_ms = int(time.time() * 1000)
+    node_types = {nt.node_type_id: nt.num_cores for nt in w.clusters.list_node_types().node_types}
 
+    total = len(clusters)
+    running = sum(1 for c in clusters if c.state == State.RUNNING)
+    terminated = sum(1 for c in clusters if c.state == State.TERMINATED)
+    errors = sum(1 for c in clusters if c.state == State.ERROR)
 
-if not clusters:
-    st.info("No clusters found.")
-else:
-    # Helper to apply auto-termination edit
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total", total)
+    col2.metric("Running", running)
+    col3.metric("Terminated", terminated)
+    col4.metric("Errors", errors)
+
+    st.divider()
+
+    if not clusters:
+        st.info("No clusters found.")
+        return
+
+    # Show action result from previous rerun
+    if "ap_action_result" in st.session_state:
+        result = st.session_state.pop("ap_action_result")
+        if result["success"]:
+            st.success(result["message"])
+        else:
+            st.error(result["message"])
+
     def apply_auto_termination(cluster_id, new_minutes):
         cluster_info = w.clusters.get(cluster_id)
         edit_kwargs = dict(
@@ -95,16 +94,14 @@ else:
         edit_kwargs = {k: v for k, v in edit_kwargs.items() if v is not None}
         return w.clusters.edit(**edit_kwargs)
 
-    # Table header
-    header_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8])
-    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "DBU/h", "Auto-Term", "New (min)", None, f"Start Time ({selected_tz})", "Uptime"]):
+    header_cols = st.columns([0.2, 1.3, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8, 0.4])
+    for col, h in zip(header_cols, [None, "Cluster Name", "Creator", "Workers", "DBU/h", "Auto-Term", "New (min)", None, f"Start Time ({selected_tz})", "Uptime", None]):
         if h:
             col.markdown(f"**{h}**")
 
     st.divider()
 
     for i, c in enumerate(clusters):
-        # Workers display & DBU calc
         worker_type = c.node_type_id or c.driver_node_type_id
         driver_type = c.driver_node_type_id or c.node_type_id
         if c.autoscale:
@@ -116,40 +113,45 @@ else:
             min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, num_w, num_w, node_types)
         dbu_str = f"{int(min_dbu)} - {int(max_dbu)}" if min_dbu != max_dbu else f"{int(min_dbu)}"
 
-        # Auto-termination
-        if c.autotermination_minutes and c.autotermination_minutes > 0:
-            auto_term = f"{c.autotermination_minutes} min"
-        else:
-            auto_term = "Disabled"
+        auto_term = f"{c.autotermination_minutes} min" if c.autotermination_minutes and c.autotermination_minutes > 0 else "Disabled"
 
-        # Start time & uptime
         if c.state == State.RUNNING and c.last_state_loss_time:
             start_utc = dt.datetime.fromtimestamp(c.last_state_loss_time / 1000, tz=pytz.utc)
             start_str = start_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            start_str = "—"
-
-        if c.state == State.RUNNING and c.last_state_loss_time:
             total_secs = (now_epoch_ms - c.last_state_loss_time) // 1000
             uptime = format_uptime(total_secs)
         else:
+            start_str = "—"
             uptime = "—"
 
         indicator = STATE_COLORS.get(c.state, "⚪")
         current_val = c.autotermination_minutes or 0
 
-        with st.form(key=f"at_form_{i}"):
-            row_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8])
+        can_start_c = c.state == State.TERMINATED
+        can_stop_c = c.state in (State.RUNNING, State.PENDING, State.RESIZING, State.RESTARTING)
+        if can_start_c:
+            btn_label, btn_help, btn_disabled = "▶", "Start", False
+        elif can_stop_c:
+            btn_label, btn_help, btn_disabled = "⏹", "Terminate", False
+        else:
+            btn_label, btn_help, btn_disabled = "—", "", True
+
+        with st.form(key=f"{key_prefix}_at_form_{i}"):
+            row_cols = st.columns([0.2, 1.3, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 1.2, 0.8, 0.4])
             row_cols[0].write(indicator)
             row_cols[1].markdown(f"{c.cluster_name}<br><span style='color:gray'>({c.cluster_id})</span>", unsafe_allow_html=True)
             row_cols[2].write(c.creator_user_name or "—")
             row_cols[3].write(workers)
             row_cols[4].write(dbu_str)
             row_cols[5].write(auto_term)
-            new_val = row_cols[6].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"at_{i}", label_visibility="collapsed")
+            new_val = row_cols[6].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"{key_prefix}_at_{i}", label_visibility="collapsed")
             submitted = row_cols[7].form_submit_button("Apply")
             row_cols[8].write(start_str)
             row_cols[9].write(uptime)
+            action_clicked = row_cols[10].form_submit_button(
+                btn_label, disabled=btn_disabled, use_container_width=True, help=btn_help
+            )
+
         if submitted:
             try:
                 result = apply_auto_termination(c.cluster_id, new_val)
@@ -157,3 +159,29 @@ else:
                 st.info(f"API response: {result}")
             except Exception as e:
                 st.error(f"Failed to update {c.cluster_name}: {e}")
+
+        if action_clicked:
+            if can_start_c:
+                try:
+                    w.clusters.start(cluster_id=c.cluster_id)
+                    st.session_state["ap_action_result"] = {"success": True, "message": f"Cluster '{c.cluster_name}' is starting."}
+                except Exception as e:
+                    st.session_state["ap_action_result"] = {"success": False, "message": f"Failed to start '{c.cluster_name}': {e}"}
+            else:
+                try:
+                    w.clusters.delete(cluster_id=c.cluster_id)
+                    st.session_state["ap_action_result"] = {"success": True, "message": f"Cluster '{c.cluster_name}' is terminating."}
+                except Exception as e:
+                    st.session_state["ap_action_result"] = {"success": False, "message": f"Failed to terminate '{c.cluster_name}': {e}"}
+            st.rerun()
+
+
+st.header("All-Purpose Clusters")
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
+tz = pytz.timezone(selected_tz)
+
+w = WorkspaceClient(profile="DEFAULT")
+clusters = [c for c in w.clusters.list()
+            if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
+
+render(w, clusters, tz, selected_tz, key_prefix="allpurp_page")

@@ -1,10 +1,10 @@
-"""Unit tests for menu.utils shared helpers."""
+"""Unit tests for menu.compute.utils shared helpers."""
 
 from types import SimpleNamespace
 
 import pytest
 
-from menu.utils import (
+from menu.compute.utils import (
     estimate_dbu,
     estimate_warehouse_dbu,
     format_uptime,
