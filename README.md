@@ -1,5 +1,7 @@
 # Databricks Cost and Optimization Dashboard
 
+> **Hackathon Project** — Built by a 2-person team in under 48 hours at the T1A Hackathon.
+
 A Streamlit-based dashboard for monitoring and optimizing Databricks workspace usage, costs, and cluster/job activity. Deployed as a [Databricks App](https://docs.databricks.com/en/dev-tools/databricks-apps/index.html).
 
 ## Features
@@ -127,3 +129,30 @@ To stop: go to the **Apps** tab → select your app → click **Stop**.
 ```bash
 pytest tests/
 ```
+
+---
+
+## Team & Hackathon Context
+
+This project was built by 2 engineers during a 48-hour internal hackathon at T1A. The goal was to deliver a deployable, working tool — not a prototype — that T1A and its clients could use immediately on any Databricks workspace without any external infrastructure.
+
+---
+
+## Roadmap
+
+These features were scoped out due to the 48-hour constraint but are planned:
+
+- **Cost estimates in USD** — add a configurable $/DBU rate so DBU estimates convert to actual dollar costs per cluster and job
+- **Teams filter** — tag jobs and clusters by team for org-level cost attribution (UI placeholder already in place on all pages)
+- **Optimization recommendations** — automatically flag clusters with high inactivity ratios and suggest lower auto-terminate settings with projected monthly savings
+- **Alerting** — notify when a cluster has been running unexpectedly long or a job has failed N consecutive days
+- ~~**Caching**~~ — `st.cache_data` is not applicable here: all data is fetched live from the Databricks API, so the bottleneck is network/API latency, not Python computation. Caching would only serve stale data without reducing load time.
+- **Databricks Marketplace listing** — publish as a one-click install (noted in deployment guide)
+
+---
+
+## Known Limitations
+
+- DBU estimates use a simplified 1 DBU per 4 vCPUs heuristic; actual rates vary by instance type and cloud provider
+- Cluster event history is capped at 500 events per cluster; very active clusters may show incomplete data for the 90-day view
+- Large workspaces with many clusters and jobs will experience slower load times due to Databricks API response latency, which cannot be mitigated by client-side caching
