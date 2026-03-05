@@ -62,7 +62,9 @@ STATE_COLORS = {
     "TERMINATING": "#CE93D8",  # purple
 }
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
+user_token = st.context.headers.get("X-Forwarded-Access-Token")
+user_w = WorkspaceClient(host=w.config.host, token=user_token) if user_token else w
 
 
 with st.spinner("Fetching job runs…"):
@@ -441,13 +443,13 @@ if triggered_job:
     action, jname, id_ = triggered_job
     if action == "run":
         try:
-            run_result = w.jobs.run_now(job_id=id_)
+            run_result = user_w.jobs.run_now(job_id=id_)
             st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
         except Exception as e:
             st.error(f"Failed to start **{jname}**: {e}")
     else:
         try:
-            w.jobs.cancel_run(run_id=id_)
+            user_w.jobs.cancel_run(run_id=id_)
             st.success(f"Job **{jname}** stop requested — run ID: {id_}")
         except Exception as e:
             st.error(f"Failed to stop **{jname}**: {e}")

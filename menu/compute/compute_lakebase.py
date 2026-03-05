@@ -149,7 +149,7 @@ st.header("Lakebase (Managed PostgreSQL)")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="lakebase_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 instances = list(w.database.list_database_instances())
 
 render(w, instances, tz, selected_tz, key_prefix="lb_page")

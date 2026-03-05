@@ -33,7 +33,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 
 with st.spinner("Fetching completed job runs…"):
     try:
@@ -49,30 +49,6 @@ with st.spinner("Fetching completed job runs…"):
         st.error(f"Failed to fetch runs: {e}")
         st.stop()
 
-    # Diagnostic: if nothing found with time filter, try without to detect permissions issue
-    if not completed_runs:
-        try:
-            probe = list(w.jobs.list_runs(expand_tasks=False, limit=1))
-        except Exception:
-            probe = []
-        if probe:
-            st.warning(
-                f"No completed runs found in the last {lookback_days} days "
-                f"(time window: {start_ms}–{end_ms}), but the API is reachable. "
-                "Try increasing the lookback window."
-            )
-        else:
-            try:
-                probe_jobs = list(w.jobs.list(expand_tasks=False))
-            except Exception:
-                probe_jobs = None
-            if probe_jobs is None:
-                st.error("Jobs API error — check workspace permissions.")
-            elif not probe_jobs:
-                st.warning("No jobs visible to this user identity. The account may lack CAN_VIEW on any job.")
-            else:
-                st.info(f"{len(probe_jobs)} job(s) found but no runs in the selected period.")
-        st.stop()
 
 # Build records for all completed runs
 records = []

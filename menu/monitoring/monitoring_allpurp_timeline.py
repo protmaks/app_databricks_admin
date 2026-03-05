@@ -49,7 +49,7 @@ effective_end = min(day_end_local, now_local)
 start_ms = int(day_start_local.timestamp() * 1000)
 end_ms = int(effective_end.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 clusters = [
     c
     for c in w.clusters.list()

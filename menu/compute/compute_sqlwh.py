@@ -221,7 +221,7 @@ st.header("SQL Warehouses")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 warehouses = list(w.warehouses.list())
 all_clusters = list(w.clusters.list())
 

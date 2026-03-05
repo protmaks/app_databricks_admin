@@ -5,7 +5,7 @@ from menu.compute.utils import quartz_to_standard_cron
 
 st.header("Jobs Settings")
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 
 st.markdown("""<style>
 div[data-testid="column"],

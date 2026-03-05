@@ -14,7 +14,7 @@ st.header("Active Compute")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="compute_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 
 # ── Fetch all data ─────────────────────────────────────────────────────────────
 with st.spinner("Loading compute data..."):

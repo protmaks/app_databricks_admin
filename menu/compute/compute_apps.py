@@ -170,7 +170,7 @@ st.header("Databricks Apps")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 apps = list(w.apps.list())
 
 render(w, apps, tz, selected_tz, key_prefix="apps_page")

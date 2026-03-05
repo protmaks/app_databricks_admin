@@ -31,7 +31,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 
 with st.spinner("Fetching failed runs…"):
     try:

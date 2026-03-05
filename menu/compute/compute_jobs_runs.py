@@ -171,7 +171,7 @@ st.header("Active Job Runs")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="jobs_runs_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = WorkspaceClient()
 
 with st.spinner("Fetching active job runs..."):
     try:
