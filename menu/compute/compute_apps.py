@@ -5,7 +5,6 @@ import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.apps import ApplicationState, ComputeState
-
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
 APP_STATE_COLORS = {
@@ -81,10 +80,10 @@ def render(w, apps, tz, selected_tz, key_prefix="apps"):
             st.error(result["message"])
 
     # Table header
-    header_cols = st.columns([0.2, 1.5, 0.9, 0.9, 2.0, 1.2, 0.5, 0.5])
+    header_cols = st.columns([0.2, 1.3, 0.9, 0.9, 2.0, 1.2, 0.4])
     for col, h in zip(
         header_cols,
-        [None, "Name", "App State", "Compute", "URL", f"Update Time ({selected_tz})", None, None],
+        [None, "Name", "App State", "Compute", "URL", f"Update Time ({selected_tz})", None],
     ):
         if h:
             col.markdown(f"**{h}**")
@@ -107,7 +106,7 @@ def render(w, apps, tz, selected_tz, key_prefix="apps"):
         else:
             update_str = "—"
 
-        row_cols = st.columns([0.2, 1.5, 0.9, 0.9, 2.0, 1.2, 0.5, 0.5])
+        row_cols = st.columns([0.2, 1.3, 0.9, 0.9, 2.0, 1.2, 0.4])
         row_cols[0].write(indicator)
         row_cols[1].markdown(
             f"{app.name}<br><span style='color:gray; font-size:0.85em'>{app.description or ''}</span>",
@@ -121,35 +120,34 @@ def render(w, apps, tz, selected_tz, key_prefix="apps"):
             row_cols[4].write("—")
         row_cols[5].write(update_str)
 
-        start_disabled = not can_start(app)
-        stop_disabled = not can_stop(app)
+        app_st = app.app_status.state if app.app_status else None
+        compute_st = app.compute_status.state if app.compute_status else None
+        is_transitional = (
+            compute_st in (ComputeState.STARTING, ComputeState.UPDATING)
+            or app_st == ApplicationState.DEPLOYING
+        )
+        if is_transitional:
+            btn_label, btn_help, btn_disabled = "⏹", "Starting...", True
+        elif can_start(app):
+            btn_label, btn_help, btn_disabled = "▶", "Start", False
+        elif can_stop(app):
+            btn_label, btn_help, btn_disabled = "⏹", "Stop", False
+        else:
+            btn_label, btn_help, btn_disabled = "—", "", True
 
-        if row_cols[6].button("▶", key=f"{key_prefix}_start_{i}", disabled=start_disabled, use_container_width=True, help="Start"):
-            try:
-                w.apps.start(app.name)
-                st.session_state["app_action_result"] = {
-                    "success": True,
-                    "message": f"App '{app.name}' is starting.",
-                }
-            except Exception as e:
-                st.session_state["app_action_result"] = {
-                    "success": False,
-                    "message": f"Failed to start '{app.name}': {e}",
-                }
-            st.rerun()
-
-        if row_cols[7].button("⏹", key=f"{key_prefix}_stop_{i}", disabled=stop_disabled, use_container_width=True, help="Stop"):
-            try:
-                w.apps.stop(app.name)
-                st.session_state["app_action_result"] = {
-                    "success": True,
-                    "message": f"App '{app.name}' is stopping.",
-                }
-            except Exception as e:
-                st.session_state["app_action_result"] = {
-                    "success": False,
-                    "message": f"Failed to stop '{app.name}': {e}",
-                }
+        if row_cols[6].button(btn_label, key=f"{key_prefix}_action_{i}", disabled=btn_disabled, use_container_width=True, help=btn_help):
+            if can_start(app):
+                try:
+                    w.apps.start(app.name)
+                    st.session_state["app_action_result"] = {"success": True, "message": f"App '{app.name}' is starting."}
+                except Exception as e:
+                    st.session_state["app_action_result"] = {"success": False, "message": f"Failed to start '{app.name}': {e}"}
+            else:
+                try:
+                    w.apps.stop(app.name)
+                    st.session_state["app_action_result"] = {"success": True, "message": f"App '{app.name}' is stopping."}
+                except Exception as e:
+                    st.session_state["app_action_result"] = {"success": False, "message": f"Failed to stop '{app.name}': {e}"}
             st.rerun()
 
         st.divider()

@@ -3,7 +3,6 @@ import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.database import DatabaseInstance, DatabaseInstanceState
-
 COMMON_TZ = [
     "UTC",
     "US/Eastern",
@@ -81,10 +80,10 @@ def render(w, instances, tz, selected_tz, key_prefix="lb"):
         else:
             st.error(result["message"])
 
-    header_cols = st.columns([0.15, 1.0, 0.7, 0.5, 0.5, 1.8, 1.1, 1.1, 0.45, 0.45])
+    header_cols = st.columns([0.15, 1.0, 0.7, 0.5, 0.5, 1.8, 1.1, 1.1, 0.4])
     for col, h in zip(
         header_cols,
-        [None, "Name", "State", "PG Ver", "Capacity", "Read/Write DNS", f"Created ({selected_tz})", "Creator", None, None],
+        [None, "Name", "State", "PG Ver", "Capacity", "Read/Write DNS", f"Created ({selected_tz})", "Creator", None],
     ):
         if h:
             col.markdown(f"**{h}**")
@@ -100,7 +99,7 @@ def render(w, instances, tz, selected_tz, key_prefix="lb"):
         creator = inst.creator or "—"
         created_str = fmt_time(inst.creation_time, tz)
 
-        row_cols = st.columns([0.15, 1.0, 0.7, 0.5, 0.5, 1.8, 1.1, 1.1, 0.45, 0.45])
+        row_cols = st.columns([0.15, 1.0, 0.7, 0.5, 0.5, 1.8, 1.1, 1.1, 0.4])
         row_cols[0].write(indicator)
         row_cols[1].write(inst.name)
         row_cols[2].write(state_str)
@@ -113,28 +112,34 @@ def render(w, instances, tz, selected_tz, key_prefix="lb"):
         row_cols[6].write(created_str)
         row_cols[7].write(creator)
 
-        if row_cols[8].button("▶", key=f"{key_prefix}_start_{i}", disabled=not can_start(inst), use_container_width=True, help="Start"):
-            try:
-                w.database.update_database_instance(
-                    inst.name,
-                    DatabaseInstance(name=inst.name, stopped=False),
-                    update_mask="stopped",
-                )
-                st.session_state["lb_action_result"] = {"success": True, "message": f"Instance '{inst.name}' is starting."}
-            except Exception as e:
-                st.session_state["lb_action_result"] = {"success": False, "message": f"Failed to start '{inst.name}': {e}"}
-            st.rerun()
+        if can_start(inst):
+            btn_label, btn_help, btn_disabled = "▶", "Start", False
+        elif can_stop(inst):
+            btn_label, btn_help, btn_disabled = "⏹", "Stop", False
+        else:
+            btn_label, btn_help, btn_disabled = "—", "", True
 
-        if row_cols[9].button("⏹", key=f"{key_prefix}_stop_{i}", disabled=not can_stop(inst), use_container_width=True, help="Stop"):
-            try:
-                w.database.update_database_instance(
-                    inst.name,
-                    DatabaseInstance(name=inst.name, stopped=True),
-                    update_mask="stopped",
-                )
-                st.session_state["lb_action_result"] = {"success": True, "message": f"Instance '{inst.name}' is stopping."}
-            except Exception as e:
-                st.session_state["lb_action_result"] = {"success": False, "message": f"Failed to stop '{inst.name}': {e}"}
+        if row_cols[8].button(btn_label, key=f"{key_prefix}_action_{i}", disabled=btn_disabled, use_container_width=True, help=btn_help):
+            if can_start(inst):
+                try:
+                    w.database.update_database_instance(
+                        inst.name,
+                        DatabaseInstance(name=inst.name, stopped=False),
+                        update_mask="stopped",
+                    )
+                    st.session_state["lb_action_result"] = {"success": True, "message": f"Instance '{inst.name}' is starting."}
+                except Exception as e:
+                    st.session_state["lb_action_result"] = {"success": False, "message": f"Failed to start '{inst.name}': {e}"}
+            else:
+                try:
+                    w.database.update_database_instance(
+                        inst.name,
+                        DatabaseInstance(name=inst.name, stopped=True),
+                        update_mask="stopped",
+                    )
+                    st.session_state["lb_action_result"] = {"success": True, "message": f"Instance '{inst.name}' is stopping."}
+                except Exception as e:
+                    st.session_state["lb_action_result"] = {"success": False, "message": f"Failed to stop '{inst.name}': {e}"}
             st.rerun()
 
         st.divider()

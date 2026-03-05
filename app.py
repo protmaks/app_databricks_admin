@@ -21,12 +21,8 @@ menu = {
         st.Page("menu/description.py", title="APP Description", icon=":material/description:",),
     ],
     "Compute": [
-        st.Page("menu/compute/compute.py", title="Compute All", icon=":material/description:",),
-        st.Page("menu/compute/compute_allpurp.py", title="All-Purpose compute", icon=":material/desktop_windows:",        ),
-        st.Page("menu/compute/compute_jobs_runs.py", title="Job runs", icon=":material/check_circle:",),
-        st.Page("menu/compute/compute_sqlwh.py", title="SQL warehouses", icon=":material/cloud:"),
-        st.Page("menu/compute/compute_apps.py", title="Apps", icon=":material/apps:"),
-        st.Page("menu/compute/compute_lakebase.py", title="Lakebase", icon=":material/apps:"), 
+        st.Page("menu/compute/compute.py", title="Active Compute", icon=":material/description:",),
+
     ],
     "Compute Monitoring": [
         st.Page("menu/monitoring/monitoring_allpurp_timeline.py", title="All-Purpose Daily Runs", icon=":material/timeline:",),

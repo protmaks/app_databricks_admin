@@ -1,5 +1,3 @@
-import datetime as dt
-import time
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
@@ -8,19 +6,7 @@ from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
 from databricks.sdk.service.database import DatabaseInstanceState
 
-from menu.compute.utils import format_uptime
-
-st.header("Main Statistics — Active Compute")
-
-COMMON_TZ = [
-    "UTC", "US/Eastern", "US/Central", "US/Pacific",
-    "Europe/London", "Europe/Berlin", "Europe/Moscow",
-    "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney",
-]
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="main_tz")
-tz = pytz.timezone(selected_tz)
-
-now_ms = int(time.time() * 1000)
+st.header("Active Compute")
 
 w = WorkspaceClient(profile="DEFAULT")
 
@@ -66,37 +52,19 @@ wh_active   = [wh for wh in warehouses   if wh.state in WH_ACTIVE]
 apps_active  = [a  for a  in apps         if app_is_active(a)]
 lb_active    = [i  for i  in lb_instances if i.state in LB_ACTIVE]
 
-# ── Summary row ───────────────────────────────────────────────────────────────
-cols = st.columns(5)
-cols[0].metric("All-Purpose", len(allpurp_active))
-cols[1].metric("SQL Warehouses", len(wh_active))
-cols[2].metric("Jobs Compute", len(jobs_active))
-cols[3].metric("Apps", len(apps_active))
-cols[4].metric("Lakebase", len(lb_active))
 
-st.divider()
+
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
+def _fmt(n): return f"**{n}**" if n else str(n)
+
 tab_ap, tab_wh, tab_job, tab_app, tab_lb = st.tabs([
-    f"🖥 All-Purpose ({len(allpurp_active)})",
-    f"☁ SQL Warehouses ({len(wh_active)})",
-    f"⚙ Jobs Compute ({len(active_runs)})",
-    f"📦 Apps ({len(apps_active)})",
-    f"🐘 Lakebase ({len(lb_active)})",
+    f":material/desktop_windows: All-Purpose ({_fmt(len(allpurp_active))})",
+    f":material/cloud: SQL Warehouses ({_fmt(len(wh_active))})",
+    f":material/check_circle: Jobs Compute ({_fmt(len(active_runs))})",
+    f":material/apps: Apps ({_fmt(len(apps_active))})",
+    f":material/apps: Lakebase ({_fmt(len(lb_active))})",
 ])
-
-
-def uptime_from_ms(start_ms):
-    if not start_ms:
-        return "—"
-    secs = (now_ms - start_ms) // 1000
-    return format_uptime(secs)
-
-
-def fmt_epoch_ms(epoch_ms):
-    if not epoch_ms:
-        return "—"
-    return dt.datetime.fromtimestamp(epoch_ms / 1000, tz=pytz.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M")
 
 
 # ── All-Purpose ───────────────────────────────────────────────────────────────

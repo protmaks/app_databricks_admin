@@ -64,6 +64,14 @@ def _build_start_times(w, warehouses, all_clusters):
     return wh_start_times
 
 
+def _can_start(wh):
+    return wh.state == WarehouseState.STOPPED
+
+
+def _can_stop(wh):
+    return wh.state in (WarehouseState.RUNNING, WarehouseState.STARTING)
+
+
 def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
     """Render the SQL Warehouses table. Can be called from other pages."""
     now_epoch_ms = int(time.time() * 1000)
@@ -86,6 +94,14 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
         st.info("No SQL warehouses found.")
         return
 
+    # Show action result from previous rerun
+    if "wh_action_result" in st.session_state:
+        result = st.session_state.pop("wh_action_result")
+        if result["success"]:
+            st.success(result["message"])
+        else:
+            st.error(result["message"])
+
     def apply_auto_stop(wh_id, new_minutes):
         wh_info = w.warehouses.get(wh_id)
         edit_kwargs = dict(
@@ -107,12 +123,12 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
         edit_kwargs = {k: v for k, v in edit_kwargs.items() if v is not None}
         return w.warehouses.edit(**edit_kwargs)
 
-    header_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8])
+    header_cols = st.columns([0.2, 1.3, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8, 0.4])
     for col, h in zip(
         header_cols,
         [
             None, "Name", "Creator", "Size", "Min/Max", "DBU/h",
-            "Auto-Stop", "New (min)", None, f"Start Time ({selected_tz})", "Uptime",
+            "Auto-Stop", "New (min)", None, f"Start Time ({selected_tz})", "Uptime", None,
         ],
     ):
         if h:
@@ -142,8 +158,15 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
             start_str = "—"
             uptime = "—"
 
+        if _can_start(wh):
+            btn_label, btn_help, btn_disabled = "▶", "Start", False
+        elif _can_stop(wh):
+            btn_label, btn_help, btn_disabled = "⏹", "Stop", False
+        else:
+            btn_label, btn_help, btn_disabled = "—", "", True
+
         with st.form(key=f"{key_prefix}_as_form_{i}"):
-            row_cols = st.columns([0.2, 1.5, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8])
+            row_cols = st.columns([0.2, 1.3, 1.4, 0.5, 0.8, 0.7, 0.6, 0.5, 0.5, 1.2, 0.8, 0.4])
             row_cols[0].write(indicator)
             row_cols[1].markdown(
                 f"{wh.name}<br><span style='color:gray'>({wh.id})</span>",
@@ -166,6 +189,10 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
             submitted = row_cols[8].form_submit_button("Apply")
             row_cols[9].write(start_str)
             row_cols[10].write(uptime)
+            action_clicked = row_cols[11].form_submit_button(
+                btn_label, disabled=btn_disabled, use_container_width=True, help=btn_help
+            )
+
         if submitted:
             try:
                 result = apply_auto_stop(wh.id, new_val)
@@ -173,6 +200,21 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
                 st.info(f"API response: {result}")
             except Exception as e:
                 st.error(f"Failed to update {wh.name}: {e}")
+
+        if action_clicked:
+            if _can_start(wh):
+                try:
+                    w.warehouses.start(wh.id)
+                    st.session_state["wh_action_result"] = {"success": True, "message": f"Warehouse '{wh.name}' is starting."}
+                except Exception as e:
+                    st.session_state["wh_action_result"] = {"success": False, "message": f"Failed to start '{wh.name}': {e}"}
+            else:
+                try:
+                    w.warehouses.stop(wh.id)
+                    st.session_state["wh_action_result"] = {"success": True, "message": f"Warehouse '{wh.name}' is stopping."}
+                except Exception as e:
+                    st.session_state["wh_action_result"] = {"success": False, "message": f"Failed to stop '{wh.name}': {e}"}
+            st.rerun()
 
 
 st.header("SQL Warehouses")

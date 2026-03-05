@@ -229,21 +229,16 @@ for j in jobs:
 def pct(n: int) -> str:
     return f"{n} ({n * 100 // total}%)" if total else str(n)
 
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total Jobs",      total)
-c2.metric("Scheduled",       pct(scheduled))
-c3.metric("With Threshold",  pct(has_threshold))
-c4.metric("With Notif.",     pct(has_notifications))
-c5.metric("With ACL",        pct(has_access))
-
-st.divider()
-
-cluster_type_order = ["Serverless", "Job Cluster", "New Cluster", "Existing Cluster", "SQL Warehouse"]
+cluster_type_order = ["Job Cluster", "New Cluster", "SQL Warehouse"]
 present_types = [ct for ct in cluster_type_order if ct in type_counts]
-if present_types:
-    breakdown_cols = st.columns(len(present_types))
-    for col, ct in zip(breakdown_cols, present_types):
-        col.metric(ct, pct(type_counts[ct]))
+
+all_cols = st.columns(4 + len(present_types))
+all_cols[0].metric("Total Jobs",      total)
+all_cols[1].metric("Scheduled",       pct(scheduled))
+all_cols[2].metric("With Threshold",  pct(has_threshold))
+all_cols[3].metric("With Notif.",     pct(has_notifications))
+for i, ct in enumerate(present_types):
+    all_cols[4 + i].metric(ct, pct(type_counts[ct]))
 
 st.divider()
 
@@ -289,10 +284,14 @@ for job in jobs:
         f"{name}<br><span style='color:gray;font-size:0.75em'>ID: {job_id}</span>",
         unsafe_allow_html=True,
     )
-    row[1].write(cluster_type)
+    if cluster_type == "Existing Cluster":
+        row[1].markdown("<span style='color:#ff4b4b !important'>Existing Cluster</span>", unsafe_allow_html=True)
+    else:
+        row[1].write(cluster_type)
     row[2].write(cluster_size)
     row[3].write(spark_ver)
     row[4].markdown(sched_display, unsafe_allow_html=True)
     row[5].markdown(thresh_cell,   unsafe_allow_html=True)
     row[6].markdown(notif_cell,    unsafe_allow_html=True)
     row[7].markdown(access_cell,   unsafe_allow_html=True)
+    st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid rgba(128,128,128,0.15);'>", unsafe_allow_html=True)
