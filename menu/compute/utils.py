@@ -14,9 +14,17 @@ def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
     host = os.getenv("DATABRICKS_HOST")
     if user_token and host:
         # Use the end-user's forwarded access token.
-        # Explicitly pass client_id/client_secret="" so the SDK doesn't
-        # fall back to DATABRICKS_CLIENT_ID/SECRET env vars and cause a conflict.
-        return WorkspaceClient(host=host, token=user_token, client_id="", client_secret="")
+        # Pop OAuth env vars so the SDK doesn't see conflicting auth methods.
+        _saved_id = os.environ.pop("DATABRICKS_CLIENT_ID", None)
+        _saved_secret = os.environ.pop("DATABRICKS_CLIENT_SECRET", None)
+        try:
+            client = WorkspaceClient(host=host, token=user_token)
+        finally:
+            if _saved_id is not None:
+                os.environ["DATABRICKS_CLIENT_ID"] = _saved_id
+            if _saved_secret is not None:
+                os.environ["DATABRICKS_CLIENT_SECRET"] = _saved_secret
+        return client
     if host and os.getenv("DATABRICKS_CLIENT_ID"):
         # SP OAuth — pop DATABRICKS_TOKEN so the SDK doesn't see a conflicting PAT
         _saved = os.environ.pop("DATABRICKS_TOKEN", None)
