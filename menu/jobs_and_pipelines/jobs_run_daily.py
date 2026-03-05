@@ -87,11 +87,7 @@ for run in completed_runs:
     if not rs or not run.start_time:
         continue
 
-    # Skip pipelines and unknown runs not in the job registry
-    if run.job_id not in registry_id_to_name:
-        continue
-
-    name = registry_id_to_name[run.job_id]
+    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)
@@ -121,9 +117,9 @@ for run in completed_runs:
 
 # Add currently running jobs (so today's cell shows RUNNING)
 for run in active_runs:
-    if not run.start_time or run.job_id not in registry_id_to_name:
+    if not run.start_time:
         continue
-    name = registry_id_to_name[run.job_id]
+    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)

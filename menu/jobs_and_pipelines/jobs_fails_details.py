@@ -62,14 +62,11 @@ records = []
 for run in failed_runs:
     if not run.start_time:
         continue
-    if run.job_id not in registry_id_to_name:
-        continue
-
     rs = run.state.result_state.value if run.state and run.state.result_state else None
     if not rs:
         continue
 
-    name = registry_id_to_name[run.job_id]
+    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
     run_start = dt.datetime.fromtimestamp(run.start_time / 1000, tz=pytz.utc).astimezone(tz)
     run_end = (
         dt.datetime.fromtimestamp(run.end_time / 1000, tz=pytz.utc).astimezone(tz)
