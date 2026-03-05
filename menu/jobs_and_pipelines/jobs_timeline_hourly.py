@@ -60,8 +60,7 @@ STATE_COLORS = {
     "TERMINATING": "#CE93D8",  # purple
 }
 
-user_token = st.context.headers.get("X-Forwarded-Access-Token")
-w = make_workspace_client(user_token=user_token)
+w = make_workspace_client()
 user_w = w
 
 
