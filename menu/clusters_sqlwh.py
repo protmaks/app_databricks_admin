@@ -84,7 +84,7 @@ STATE_COLORS = {
     WarehouseState.RUNNING: "🟢",
     WarehouseState.STARTING: "🟡",
     WarehouseState.STOPPING: "🟠",
-    WarehouseState.STOPPED: "🔴",
+    WarehouseState.STOPPED: "🔘",
     WarehouseState.DELETING: "🔴",
     WarehouseState.DELETED: "⚫",
 }

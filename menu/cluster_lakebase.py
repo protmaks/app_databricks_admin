@@ -45,7 +45,7 @@ STATE_COLORS = {
     DatabaseInstanceState.STARTING: "🟡",
     DatabaseInstanceState.UPDATING: "🟡",
     DatabaseInstanceState.FAILING_OVER: "🟠",
-    DatabaseInstanceState.STOPPED: "🔴",
+    DatabaseInstanceState.STOPPED: "🔘",
     DatabaseInstanceState.DELETING: "⚫",
 }
 

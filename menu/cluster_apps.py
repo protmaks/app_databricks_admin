@@ -61,7 +61,7 @@ APP_STATE_COLORS = {
 COMPUTE_STATE_COLORS = {
     ComputeState.ACTIVE: "🟢",
     ComputeState.STARTING: "🟡",
-    ComputeState.STOPPED: "🔴",
+    ComputeState.STOPPED: "🔘",
     ComputeState.ERROR: "🔴",
     ComputeState.DELETING: "🟠",
     ComputeState.UPDATING: "🟡",

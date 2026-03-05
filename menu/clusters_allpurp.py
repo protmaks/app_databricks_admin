@@ -39,7 +39,7 @@ STATE_COLORS = {
     State.PENDING: "🟡",
     State.RESIZING: "🟡",
     State.RESTARTING: "🟡",
-    State.TERMINATED: "🔴",
+    State.TERMINATED: "🔘",
     State.TERMINATING: "🟠",
     State.ERROR: "🔴",
     State.UNKNOWN: "⚪",
