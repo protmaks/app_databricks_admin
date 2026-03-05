@@ -21,6 +21,7 @@ div[data-testid="stHorizontalBlock"] { overflow: visible !important; }
     z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.4); line-height: 1.5;
 }
 .tt:hover .tt-box { display: block; }
+.red-cell { color: #ff4b4b !important; }
 </style>""", unsafe_allow_html=True)
 
 
@@ -118,7 +119,7 @@ def extract_notification_tooltip(job) -> str | None:
     email = getattr(job.settings, "email_notifications", None)
     webhook = getattr(job.settings, "webhook_notifications", None)
     lines = []
-    events = ("on_start", "on_success", "on_failure", "on_duration_warning_threshold_exceeded")
+    events = ("on_failure", "on_duration_warning_threshold_exceeded")
     if email:
         for ev in events:
             addrs = getattr(email, ev, None)
@@ -285,7 +286,7 @@ for job in jobs:
         unsafe_allow_html=True,
     )
     if cluster_type == "Existing Cluster":
-        row[1].markdown("<span style='color:#ff4b4b !important'>Existing Cluster</span>", unsafe_allow_html=True)
+        row[1].markdown("<span class='red-cell'>Existing Cluster</span>", unsafe_allow_html=True)
     else:
         row[1].write(cluster_type)
     row[2].write(cluster_size)
