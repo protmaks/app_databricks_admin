@@ -13,8 +13,10 @@ def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
     """
     host = os.getenv("DATABRICKS_HOST")
     if user_token and host:
-        # Use the end-user's forwarded access token (recommended by Databricks Apps docs)
-        return WorkspaceClient(host=host, token=user_token)
+        # Use the end-user's forwarded access token.
+        # Explicitly pass client_id/client_secret="" so the SDK doesn't
+        # fall back to DATABRICKS_CLIENT_ID/SECRET env vars and cause a conflict.
+        return WorkspaceClient(host=host, token=user_token, client_id="", client_secret="")
     if host and os.getenv("DATABRICKS_CLIENT_ID"):
         # SP OAuth — pop DATABRICKS_TOKEN so the SDK doesn't see a conflicting PAT
         _saved = os.environ.pop("DATABRICKS_TOKEN", None)
