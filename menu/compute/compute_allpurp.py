@@ -6,7 +6,7 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
 
-from menu.utils import estimate_dbu, format_uptime
+from menu.compute.utils import estimate_dbu, format_uptime
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 

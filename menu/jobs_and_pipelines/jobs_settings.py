@@ -1,7 +1,7 @@
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 
-from menu.utils import quartz_to_standard_cron
+from menu.compute.utils import quartz_to_standard_cron
 
 st.header("Jobs Settings")
 

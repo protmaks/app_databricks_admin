@@ -8,7 +8,7 @@ from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
 from databricks.sdk.service.database import DatabaseInstanceState
 
-from menu.utils import format_uptime
+from menu.compute.utils import format_uptime
 
 st.header("Main Statistics — Active Compute")
 
@@ -33,6 +33,10 @@ with st.spinner("Loading compute data..."):
         lb_instances = list(w.database.list_database_instances())
     except Exception:
         lb_instances = []
+    try:
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+    except Exception:
+        active_runs = []
 
 # Active = running + starting/pending states
 ALLPURP_ACTIVE = (ClusterState.RUNNING, ClusterState.PENDING, ClusterState.RESIZING, ClusterState.RESTARTING)
@@ -76,7 +80,7 @@ st.divider()
 tab_ap, tab_wh, tab_job, tab_app, tab_lb = st.tabs([
     f"🖥 All-Purpose ({len(allpurp_active)})",
     f"☁ SQL Warehouses ({len(wh_active)})",
-    f"⚙ Jobs Compute ({len(jobs_active)})",
+    f"⚙ Jobs Compute ({len(active_runs)})",
     f"📦 Apps ({len(apps_active)})",
     f"🐘 Lakebase ({len(lb_active)})",
 ])
@@ -97,7 +101,7 @@ def fmt_epoch_ms(epoch_ms):
 
 # ── All-Purpose ───────────────────────────────────────────────────────────────
 with tab_ap:
-    from menu.compute_allpurp import render as render_allpurp
+    from menu.compute.compute_allpurp import render as render_allpurp
     allpurp_all = [
         c for c in all_clusters
         if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)
@@ -107,43 +111,26 @@ with tab_ap:
 
 # ── SQL Warehouses ────────────────────────────────────────────────────────────
 with tab_wh:
-    from menu.compute_sqlwh import render as render_wh
+    from menu.compute.compute_sqlwh import render as render_wh
     render_wh(w, warehouses, all_clusters, tz, selected_tz, key_prefix="compute_all_wh")
 
 
 # ── Jobs Compute ──────────────────────────────────────────────────────────────
 with tab_job:
-    if not jobs_active:
-        st.info("No active Jobs Compute clusters.")
-    else:
-        h = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 1.1, 0.8])
-        for col, label in zip(h, ["", "State", "Cluster Name", "Creator", "Workers", f"Start ({selected_tz})", "Uptime"]):
-            col.markdown(f"**{label}**")
-        st.divider()
-        for c in jobs_active:
-            workers = (
-                f"{c.autoscale.min_workers}–{c.autoscale.max_workers} auto"
-                if c.autoscale else str(c.num_workers or 0)
-            )
-            start_ms = c.last_state_loss_time if c.state == ClusterState.RUNNING else None
-            row = st.columns([0.15, 0.7, 1.5, 1.2, 0.6, 1.1, 0.8])
-            row[0].write("🟢" if c.state == ClusterState.RUNNING else "🟡")
-            row[1].write(c.state.value if c.state else "—")
-            row[2].markdown(f"{c.cluster_name}<br><span style='color:gray;font-size:0.85em'>{c.cluster_id}</span>", unsafe_allow_html=True)
-            row[3].write(c.creator_user_name or "—")
-            row[4].write(workers)
-            row[5].write(fmt_epoch_ms(start_ms))
-            row[6].write(uptime_from_ms(start_ms))
-            st.divider()
+    from menu.compute.compute_jobs_runs import build_cluster_states, render as render_runs
+    cluster_states = build_cluster_states(all_clusters)
+    render_runs(w, active_runs, cluster_states, tz, selected_tz, key_prefix="compute_all_runs")
 
 
 # ── Apps ──────────────────────────────────────────────────────────────────────
 with tab_app:
-    from menu.compute_apps import render as render_apps
+    from menu.compute.compute_apps import render as render_apps
     render_apps(w, apps, tz, selected_tz, key_prefix="compute_all_apps")
 
 
 # ── Lakebase ──────────────────────────────────────────────────────────────────
 with tab_lb:
-    from menu.compute_lakebase import render as render_lb
+    from menu.compute.compute_lakebase import render as render_lb
     render_lb(w, lb_instances, tz, selected_tz, key_prefix="compute_all_lb")
+
+

@@ -11,7 +11,7 @@ from databricks.sdk.service.compute import (
     GetEventsOrder,
 )
 
-from menu.utils import run_uses_cluster, resolve_display_state
+from menu.compute.utils import run_uses_cluster, resolve_display_state
 MAX_CLUSTERS = 500
 st.header("Cluster Jobs")
 
