@@ -4,7 +4,8 @@ import altair as alt
 import pandas as pd
 import pytz
 import streamlit as st
-from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import RunType
+from menu.compute.utils import make_workspace_client
 
 st.header("Job Runs History")
 
@@ -34,7 +35,8 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = make_workspace_client()
+user_w = w
 
 with st.spinner("Fetching data…"):
     try:
@@ -44,6 +46,7 @@ with st.spinner("Fetching data…"):
                 start_time_to=end_ms,
                 completed_only=True,
                 expand_tasks=False,
+                run_type=RunType.JOB_RUN,
             )
         )
     except Exception as e:
@@ -51,44 +54,45 @@ with st.spinner("Fetching data…"):
         st.stop()
 
     try:
-        all_jobs = list(w.jobs.list(expand_tasks=False))
+        all_jobs = list(w.jobs.list(expand_tasks=True))
     except Exception as e:
         st.error(f"Failed to fetch job list: {e}")
         st.stop()
 
     try:
-        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False, run_type=RunType.JOB_RUN))
     except Exception:
         active_runs = []
 
-# Registry: job_id → canonical name from job settings
+# Exclude pipeline jobs (jobs whose tasks include a pipeline_task)
+pipeline_job_ids = {
+    j.job_id
+    for j in all_jobs
+    if j.job_id and j.settings and j.settings.tasks
+    and any(t.pipeline_task is not None for t in j.settings.tasks)
+}
+
+# Registry: job_id → canonical name from job settings (jobs only, no pipelines)
 registry_id_to_name = {
     j.job_id: (j.settings.name or f"job-{j.job_id}")
-    for j in all_jobs if j.job_id
+    for j in all_jobs if j.job_id and j.job_id not in pipeline_job_ids
 }
 job_to_id = {name: jid for jid, name in registry_id_to_name.items()}
 
-# Match active runs by job_id
-active_jid_to_run_id = {}
+# Map job name → active run_id (jobs only)
+job_to_running_run_id = {}
 for run in active_runs:
-    if run.job_id and run.job_id not in active_jid_to_run_id:
-        active_jid_to_run_id[run.job_id] = run.run_id
-
-job_to_running_run_id = {
-    jname: active_jid_to_run_id[jid]
-    for jname, jid in job_to_id.items()
-    if jid in active_jid_to_run_id
-}
+    if not run.run_id or run.job_id not in registry_id_to_name:
+        continue
+    name = registry_id_to_name.get(run.job_id)
+    if name not in job_to_running_run_id:
+        job_to_running_run_id[name] = run.run_id
 
 # Build records for completed runs using canonical names
 records = []
 for run in completed_runs:
     rs = run.state.result_state.value if run.state and run.state.result_state else None
-    if not rs or not run.start_time:
-        continue
-
-    # Skip pipelines and unknown runs not in the job registry
-    if run.job_id not in registry_id_to_name:
+    if not rs or not run.start_time or run.job_id not in registry_id_to_name:
         continue
 
     name = registry_id_to_name[run.job_id]
@@ -346,13 +350,13 @@ if triggered_job:
     action, jname, id_ = triggered_job
     if action == "run":
         try:
-            run_result = w.jobs.run_now(job_id=id_)
+            run_result = user_w.jobs.run_now(job_id=id_)
             st.success(f"Job **{jname}** started — run ID: {run_result.run_id}")
         except Exception as e:
             st.error(f"Failed to start **{jname}**: {e}")
     else:
         try:
-            w.jobs.cancel_run(run_id=id_)
+            user_w.jobs.cancel_run(run_id=id_)
             st.success(f"Job **{jname}** stop requested — run ID: {id_}")
         except Exception as e:
             st.error(f"Failed to stop **{jname}**: {e}")

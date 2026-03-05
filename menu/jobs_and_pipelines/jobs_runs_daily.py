@@ -5,6 +5,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 
 st.header("Job Runs History")
 
@@ -33,7 +34,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = make_workspace_client()
 
 with st.spinner("Fetching completed job runs…"):
     try:
@@ -48,6 +49,7 @@ with st.spinner("Fetching completed job runs…"):
     except Exception as e:
         st.error(f"Failed to fetch runs: {e}")
         st.stop()
+
 
 # Build records for all completed runs
 records = []

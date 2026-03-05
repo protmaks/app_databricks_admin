@@ -4,6 +4,7 @@ import time
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 from databricks.sdk.service.apps import ApplicationState, ComputeState
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
@@ -166,11 +167,12 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-st.header("Databricks Apps")
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
-tz = pytz.timezone(selected_tz)
+if __name__ == "__main__":
+    st.header("Databricks Apps")
+    selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
+    tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
-apps = list(w.apps.list())
+    w = make_workspace_client()
+    apps = list(w.apps.list())
 
-render(w, apps, tz, selected_tz, key_prefix="apps_page")
+    render(w, apps, tz, selected_tz, key_prefix="apps_page")

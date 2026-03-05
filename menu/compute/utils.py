@@ -1,4 +1,42 @@
 """Shared pure-logic helpers used by multiple menu pages."""
+import os
+
+from databricks.sdk import WorkspaceClient
+
+
+def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
+    """Return a WorkspaceClient for Databricks Apps or local development.
+
+    In Databricks Apps pass the forwarded user token (X-Forwarded-Access-Token)
+    to act on behalf of the logged-in user.  Falls back to SP OAuth or a local
+    DEFAULT profile when no token is supplied.
+    """
+    host = os.getenv("DATABRICKS_HOST")
+    if user_token and host:
+        # Use the end-user's forwarded access token.
+        # Pop OAuth env vars so the SDK doesn't see conflicting auth methods.
+        _saved_id = os.environ.pop("DATABRICKS_CLIENT_ID", None)
+        _saved_secret = os.environ.pop("DATABRICKS_CLIENT_SECRET", None)
+        try:
+            client = WorkspaceClient(host=host, token=user_token)
+        finally:
+            if _saved_id is not None:
+                os.environ["DATABRICKS_CLIENT_ID"] = _saved_id
+            if _saved_secret is not None:
+                os.environ["DATABRICKS_CLIENT_SECRET"] = _saved_secret
+        return client
+    if host and os.getenv("DATABRICKS_CLIENT_ID"):
+        # SP OAuth — pop DATABRICKS_TOKEN so the SDK doesn't see a conflicting PAT
+        _saved = os.environ.pop("DATABRICKS_TOKEN", None)
+        try:
+            client = WorkspaceClient()
+        finally:
+            if _saved is not None:
+                os.environ["DATABRICKS_TOKEN"] = _saved
+        return client
+    if os.getenv("DATABRICKS_TOKEN"):
+        return WorkspaceClient()
+    return WorkspaceClient(profile="DEFAULT")
 
 # SQL Warehouse DBU rates per cluster (single cluster unit)
 WAREHOUSE_SIZE_DBU = {

@@ -5,6 +5,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 
 st.header("Job Fails Details")
 
@@ -31,7 +32,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = make_workspace_client()
 
 with st.spinner("Fetching failed runs…"):
     try:
@@ -62,14 +63,11 @@ records = []
 for run in failed_runs:
     if not run.start_time:
         continue
-    if run.job_id not in registry_id_to_name:
-        continue
-
     rs = run.state.result_state.value if run.state and run.state.result_state else None
     if not rs:
         continue
 
-    name = registry_id_to_name[run.job_id]
+    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
     run_start = dt.datetime.fromtimestamp(run.start_time / 1000, tz=pytz.utc).astimezone(tz)
     run_end = (
         dt.datetime.fromtimestamp(run.end_time / 1000, tz=pytz.utc).astimezone(tz)

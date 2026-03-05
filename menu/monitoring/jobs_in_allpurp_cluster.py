@@ -11,7 +11,7 @@ from databricks.sdk.service.compute import (
     GetEventsOrder,
 )
 
-from menu.compute.utils import run_uses_cluster, resolve_display_state
+from menu.compute.utils import run_uses_cluster, resolve_display_state, make_workspace_client
 MAX_CLUSTERS = 500
 st.header("Cluster Jobs")
 
@@ -35,7 +35,7 @@ selected_tz = col_tz.selectbox(
 )
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient(profile="DEFAULT")
+w = make_workspace_client()
 
 clusters = [
     c for c in w.clusters.list()
