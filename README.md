@@ -7,6 +7,11 @@ A Streamlit-based dashboard for monitoring and optimizing Databricks workspace u
 In comparison with Databricks native Dashboards, the Databricks Apps have a more diverse functionality and can be used for a wider range of use cases. The main difference is that the Databricks Apps are not limited to the data stored in the Databricks tables and can use the Databricks API to get any information about the workspace and manage the workspace resources. This allows us to create a more comprehensive and interactive dashboard that can help users to optimize their costs and monitor their usage more effectively.
 
 This solution provides a quicker way to address any issues related to the clusters and jobs in the workspace compared to the native Databricks UI.
+
+Databricks changes UI frequently, and non-technical users may find it difficult to navigate and find the information they need. This app provides a consistent and user-friendly interface that abstracts away the complexity of the Databricks UI and presents the most relevant information in an easy-to-understand format.
+
+Additionally, the UI is minimalistic that allows any business user or a non-technical person to understand the information and make informed decisions about their Databricks usage and costs.
+
 ## Apps Pages
 
 ### Active Compute
