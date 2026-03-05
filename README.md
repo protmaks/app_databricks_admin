@@ -55,7 +55,8 @@ By default, Databricks Apps run using a dedicated Service Principal. To allow ap
 1. In the sidebar, click on **Compute**.
 2. Go to the **Apps** tab.
 3. Click on the **Name** of the application you want to open.
-4. Click the **Open app** button in the top right corner.
+4. Click to the Deploy and chouse the **main** branch.
+5. Click the **Open app** button in the top right corner.
 
 ![Enable User identity for Databricks Apps](assets/app_link.png)
 
