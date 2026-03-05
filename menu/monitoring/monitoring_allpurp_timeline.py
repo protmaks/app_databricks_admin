@@ -5,6 +5,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 from databricks.sdk.service.compute import (
     ClusterSource,
     EventType,
@@ -49,7 +50,7 @@ effective_end = min(day_end_local, now_local)
 start_ms = int(day_start_local.timestamp() * 1000)
 end_ms = int(effective_end.timestamp() * 1000)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 clusters = [
     c
     for c in w.clusters.list()

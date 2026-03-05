@@ -7,7 +7,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.compute import EventType, GetEventsOrder
 
-from menu.compute.utils import estimate_warehouse_dbu
+from menu.compute.utils import estimate_warehouse_dbu, make_workspace_client
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
@@ -221,7 +221,7 @@ st.header("SQL Warehouses")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="warehouse_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 warehouses = list(w.warehouses.list())
 all_clusters = list(w.clusters.list())
 

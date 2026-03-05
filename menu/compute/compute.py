@@ -1,6 +1,6 @@
 import pytz
 import streamlit as st
-from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
@@ -14,7 +14,7 @@ st.header("Active Compute")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="compute_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 
 # ── Fetch all data ─────────────────────────────────────────────────────────────
 with st.spinner("Loading compute data..."):

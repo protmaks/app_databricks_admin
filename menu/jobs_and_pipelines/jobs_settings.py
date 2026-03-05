@@ -1,11 +1,11 @@
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 
-from menu.compute.utils import quartz_to_standard_cron
+from menu.compute.utils import quartz_to_standard_cron, make_workspace_client
 
 st.header("Jobs Settings")
 
-w = WorkspaceClient()
+w = make_workspace_client()
 
 st.markdown("""<style>
 div[data-testid="column"],

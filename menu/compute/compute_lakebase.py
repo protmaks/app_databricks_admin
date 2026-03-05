@@ -2,6 +2,7 @@ import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 from databricks.sdk.service.database import DatabaseInstance, DatabaseInstanceState
 COMMON_TZ = [
     "UTC",
@@ -149,7 +150,7 @@ st.header("Lakebase (Managed PostgreSQL)")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="lakebase_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 instances = list(w.database.list_database_instances())
 
 render(w, instances, tz, selected_tz, key_prefix="lb_page")

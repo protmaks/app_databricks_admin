@@ -6,7 +6,7 @@ import streamlit as st
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State
 
-from menu.compute.utils import estimate_dbu, format_uptime
+from menu.compute.utils import estimate_dbu, format_uptime, make_workspace_client
 
 APP_NAME = os.getenv("DATABRICKS_APP_NAME")
 
@@ -180,7 +180,7 @@ st.header("All-Purpose Clusters")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="cluster_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 clusters = [c for c in w.clusters.list()
             if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)]
 

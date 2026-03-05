@@ -3,6 +3,7 @@ import datetime as dt
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 
 LIFECYCLE_COLORS = {
@@ -171,7 +172,7 @@ st.header("Active Job Runs")
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="jobs_runs_tz")
 tz = pytz.timezone(selected_tz)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 
 with st.spinner("Fetching active job runs..."):
     try:

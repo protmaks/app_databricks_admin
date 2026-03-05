@@ -5,6 +5,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
+from menu.compute.utils import make_workspace_client
 
 st.header("Job Fails Details")
 
@@ -31,7 +32,7 @@ now_local = dt.datetime.now(tz)
 start_ms = int((now_local - dt.timedelta(days=lookback_days)).timestamp() * 1000)
 end_ms = int(now_local.timestamp() * 1000)
 
-w = WorkspaceClient()
+w = make_workspace_client()
 
 with st.spinner("Fetching failed runs…"):
     try:

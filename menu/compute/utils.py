@@ -1,4 +1,15 @@
 """Shared pure-logic helpers used by multiple menu pages."""
+import os
+
+from databricks.sdk import WorkspaceClient
+
+
+def make_workspace_client() -> WorkspaceClient:
+    """Return a WorkspaceClient using SP credentials in Databricks Apps,
+    falling back to profile='DEFAULT' for local development."""
+    if os.getenv("DATABRICKS_CLIENT_ID") or os.getenv("DATABRICKS_TOKEN"):
+        return WorkspaceClient()
+    return WorkspaceClient(profile="DEFAULT")
 
 # SQL Warehouse DBU rates per cluster (single cluster unit)
 WAREHOUSE_SIZE_DBU = {
