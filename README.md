@@ -40,7 +40,7 @@ If the application needs to manage workspace resources (such as clusters or jobs
 > **Note:** Every Databricks App creates its own identity. Granting this identity Admin rights gives the code within the app full control over the workspace.
 
 
-### 2.2 - for Bisness Users (User identity for Databricks Apps)
+### TBD - 2.2 - for Bisness Users (User identity for Databricks Apps)
 By default, Databricks Apps run using a dedicated Service Principal. To allow apps to run under the identity of the user accessing them (Run as viewer), this feature must be enabled in the Workspace settings.
 
 1. Go to **Settings** -> **Workspace Settings**.
