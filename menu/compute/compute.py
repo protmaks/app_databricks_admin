@@ -1,13 +1,18 @@
 import pytz
 import streamlit as st
-import pytz as tz
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
 from databricks.sdk.service.database import DatabaseInstanceState
 
+COMMON_TZ = ["UTC", "US/Eastern", "US/Central", "US/Pacific", "Europe/London", "Europe/Berlin",
+             "Europe/Moscow", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"]
+
 st.header("Active Compute")
+
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="compute_tz")
+tz = pytz.timezone(selected_tz)
 
 w = WorkspaceClient(profile="DEFAULT")
 
@@ -75,31 +80,31 @@ with tab_ap:
         c for c in all_clusters
         if c.cluster_source not in (ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE)
     ]
-    render_allpurp(w, allpurp_all, tz, key_prefix="compute_all_ap")
+    render_allpurp(w, allpurp_all, tz, selected_tz, key_prefix="compute_all_ap")
 
 
 # ── SQL Warehouses ────────────────────────────────────────────────────────────
 with tab_wh:
     from menu.compute.compute_sqlwh import render as render_wh
-    render_wh(w, warehouses, all_clusters, tz, key_prefix="compute_all_wh")
+    render_wh(w, warehouses, all_clusters, tz, selected_tz, key_prefix="compute_all_wh")
 
 
 # ── Jobs Compute ──────────────────────────────────────────────────────────────
 with tab_job:
     from menu.compute.compute_jobs_runs import build_cluster_states, render as render_runs
     cluster_states = build_cluster_states(all_clusters)
-    render_runs(w, active_runs, cluster_states, tz, key_prefix="compute_all_runs")
+    render_runs(w, active_runs, cluster_states, tz, selected_tz, key_prefix="compute_all_runs")
 
 
 # ── Apps ──────────────────────────────────────────────────────────────────────
 with tab_app:
     from menu.compute.compute_apps import render as render_apps
-    render_apps(w, apps, tz, key_prefix="compute_all_apps")
+    render_apps(w, apps, tz, selected_tz, key_prefix="compute_all_apps")
 
 
 # ── Lakebase ──────────────────────────────────────────────────────────────────
 with tab_lb:
     from menu.compute.compute_lakebase import render as render_lb
-    render_lb(w, lb_instances, tz, key_prefix="compute_all_lb")
+    render_lb(w, lb_instances, tz, selected_tz, key_prefix="compute_all_lb")
 
 
