@@ -4,6 +4,7 @@ import altair as alt
 import pandas as pd
 import pytz
 import streamlit as st
+from databricks.sdk.service.jobs import RunType
 from menu.compute.utils import make_workspace_client
 
 st.header("Job Runs History")
@@ -45,6 +46,7 @@ with st.spinner("Fetching data…"):
                 start_time_to=end_ms,
                 completed_only=True,
                 expand_tasks=False,
+                run_type=RunType.JOB_RUN,
             )
         )
     except Exception as e:
@@ -52,43 +54,48 @@ with st.spinner("Fetching data…"):
         st.stop()
 
     try:
-        all_jobs = list(w.jobs.list(expand_tasks=False))
+        all_jobs = list(w.jobs.list(expand_tasks=True))
     except Exception as e:
         st.error(f"Failed to fetch job list: {e}")
         st.stop()
 
     try:
-        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False, run_type=RunType.JOB_RUN))
     except Exception:
         active_runs = []
 
-# Registry: job_id → canonical name from job settings
+# Exclude pipeline jobs (jobs whose tasks include a pipeline_task)
+pipeline_job_ids = {
+    j.job_id
+    for j in all_jobs
+    if j.job_id and j.settings and j.settings.tasks
+    and any(t.pipeline_task is not None for t in j.settings.tasks)
+}
+
+# Registry: job_id → canonical name from job settings (jobs only, no pipelines)
 registry_id_to_name = {
     j.job_id: (j.settings.name or f"job-{j.job_id}")
-    for j in all_jobs if j.job_id
+    for j in all_jobs if j.job_id and j.job_id not in pipeline_job_ids
 }
 job_to_id = {name: jid for jid, name in registry_id_to_name.items()}
 
-# Match active runs by job_id
-active_jid_to_run_id = {}
+# Map job name → active run_id (jobs only)
+job_to_running_run_id = {}
 for run in active_runs:
-    if run.job_id and run.job_id not in active_jid_to_run_id:
-        active_jid_to_run_id[run.job_id] = run.run_id
-
-job_to_running_run_id = {
-    jname: active_jid_to_run_id[jid]
-    for jname, jid in job_to_id.items()
-    if jid in active_jid_to_run_id
-}
+    if not run.run_id or run.job_id not in registry_id_to_name:
+        continue
+    name = registry_id_to_name.get(run.job_id)
+    if name not in job_to_running_run_id:
+        job_to_running_run_id[name] = run.run_id
 
 # Build records for completed runs using canonical names
 records = []
 for run in completed_runs:
     rs = run.state.result_state.value if run.state and run.state.result_state else None
-    if not rs or not run.start_time:
+    if not rs or not run.start_time or run.job_id not in registry_id_to_name:
         continue
 
-    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
+    name = registry_id_to_name[run.job_id]
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)
@@ -118,9 +125,9 @@ for run in completed_runs:
 
 # Add currently running jobs (so today's cell shows RUNNING)
 for run in active_runs:
-    if not run.start_time:
+    if not run.start_time or run.job_id not in registry_id_to_name:
         continue
-    name = registry_id_to_name.get(run.job_id) or run.run_name or f"job-{run.job_id}"
+    name = registry_id_to_name[run.job_id]
     run_start = dt.datetime.fromtimestamp(
         run.start_time / 1000, tz=pytz.utc
     ).astimezone(tz)
