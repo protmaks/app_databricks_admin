@@ -63,6 +63,16 @@ By default, Databricks Apps run using a dedicated Service Principal. To allow ap
 
 ### 4. Resource Management
 
+Set up access to the application
+1. In the sidebar, click on **Compute**.
+2. Go to the **Apps** tab.
+3. Click on the **Name** of the application you want to open.
+4. Click to the **Permissions** tab.
+5. Set up acces.
+
+
+### 5. Daily work
+
 **Important:** Do not forget to manually stop the application or set up a scheduled job to stop it; otherwise, it will run 24/7 and continuously consume compute resources.
 
 To stop an app:
