@@ -1,159 +1,50 @@
 import datetime as dt
-import os
-import time
+
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.apps import ApplicationState, ComputeState
+from databricks.sdk.service.compute import State as ClusterState
 
-APP_NAME = os.getenv("DATABRICKS_APP_NAME")
-
-APP_STATE_COLORS = {
-    ApplicationState.RUNNING: "🟢",
-    ApplicationState.DEPLOYING: "🟡",
-    ApplicationState.CRASHED: "🔴",
-    ApplicationState.UNAVAILABLE: "⚫",
+LIFECYCLE_COLORS = {
+    "RUNNING": "🟢",
+    "PENDING": "🟡",
+    "QUEUED": "🟡",
+    "BLOCKED": "🟡",
+    "WAITING": "🟡",
+    "TERMINATING": "🟠",
 }
 
-COMPUTE_STATE_COLORS = {
-    ComputeState.ACTIVE: "🟢",
-    ComputeState.STARTING: "🟡",
-    ComputeState.STOPPED: "🔘",
-    ComputeState.ERROR: "🔴",
-    ComputeState.DELETING: "🟠",
-    ComputeState.UPDATING: "🟡",
-}
+ACTIVE_STATES = {"RUNNING", "PENDING", "QUEUED", "BLOCKED", "WAITING", "TERMINATING"}
+
+# Cluster states that mean the cluster is not yet ready
+_CLUSTER_PENDING = {ClusterState.PENDING, ClusterState.RESIZING, ClusterState.RESTARTING}
 
 
-def get_indicator(app):
-    if app.app_status and app.app_status.state:
-        return APP_STATE_COLORS.get(app.app_status.state, "⚪")
-    if app.compute_status and app.compute_status.state:
-        return COMPUTE_STATE_COLORS.get(app.compute_status.state, "⚪")
-    return "⚪"
+def get_lifecycle_str(run, cluster_states: dict) -> str:
+    """Return lifecycle state string.
 
+    When the run lifecycle is RUNNING but its cluster is still PENDING/RESIZING,
+    returns PENDING — matching the Databricks UI behaviour.
+    """
+    # New API (v2.1+): run.status.state is RunLifecycleStateV2State
+    if run.status and run.status.state:
+        lcs = run.status.state.value
+    elif run.state and run.state.life_cycle_state:
+        lcs = run.state.life_cycle_state.value
+    else:
+        return "—"
 
-def can_start(app):
-    compute = app.compute_status.state if app.compute_status else None
-    app_st = app.app_status.state if app.app_status else None
-    return compute == ComputeState.STOPPED or app_st == ApplicationState.CRASHED
+    # If lifecycle says RUNNING but the cluster isn't ready yet → PENDING
+    if lcs == "RUNNING":
+        cluster_id = run.cluster_instance.cluster_id if run.cluster_instance else None
+        if cluster_id is None:
+            # No cluster assigned yet — still starting up
+            return "PENDING"
+        c_state = cluster_states.get(cluster_id)
+        if c_state in _CLUSTER_PENDING:
+            return "PENDING"
 
-
-def can_stop(app):
-    compute = app.compute_status.state if app.compute_status else None
-    app_st = app.app_status.state if app.app_status else None
-    return compute in (ComputeState.ACTIVE, ComputeState.STARTING, ComputeState.UPDATING) \
-        or app_st in (ApplicationState.RUNNING, ApplicationState.DEPLOYING)
-
-
-def render(w, apps, tz, selected_tz, key_prefix="apps"):
-    """Render the Apps table. Can be called from other pages."""
-    total = len(apps)
-    running = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.RUNNING)
-    stopped = sum(1 for a in apps if a.compute_status and a.compute_status.state == ComputeState.STOPPED)
-    starting = sum(
-        1
-        for a in apps
-        if a.compute_status and a.compute_status.state == ComputeState.STARTING
-        or a.app_status and a.app_status.state == ApplicationState.DEPLOYING
-    )
-    crashed = sum(1 for a in apps if a.app_status and a.app_status.state == ApplicationState.CRASHED)
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total", total)
-    col2.metric("Running", running)
-    col3.metric("Stopped", stopped)
-    col4.metric("Starting", starting)
-    col5.metric("Crashed", crashed)
-
-    st.divider()
-
-    if not apps:
-        st.info("No Databricks Apps found.")
-        return
-
-    # Show action result from previous rerun
-    if "app_action_result" in st.session_state:
-        result = st.session_state.pop("app_action_result")
-        if result["success"]:
-            st.success(result["message"])
-        else:
-            st.error(result["message"])
-
-    # Table header
-    header_cols = st.columns([0.2, 1.5, 0.9, 0.9, 2.0, 1.2, 0.5, 0.5])
-    for col, h in zip(
-        header_cols,
-        [None, "Name", "App State", "Compute", "URL", f"Update Time ({selected_tz})", None, None],
-    ):
-        if h:
-            col.markdown(f"**{h}**")
-
-    st.divider()
-
-    for i, app in enumerate(apps):
-        indicator = get_indicator(app)
-        app_state_str = app.app_status.state.value if (app.app_status and app.app_status.state) else "—"
-        compute_str = app.compute_status.state.value if (app.compute_status and app.compute_status.state) else "—"
-        app_url = app.url or "—"
-
-        # Update time
-        if app.update_time:
-            try:
-                update_utc = dt.datetime.fromisoformat(str(app.update_time).replace("Z", "+00:00"))
-                update_str = update_utc.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                update_str = str(app.update_time)
-        else:
-            update_str = "—"
-
-        row_cols = st.columns([0.2, 1.5, 0.9, 0.9, 2.0, 1.2, 0.5, 0.5])
-        row_cols[0].write(indicator)
-        row_cols[1].markdown(
-            f"{app.name}<br><span style='color:gray; font-size:0.85em'>{app.description or ''}</span>",
-            unsafe_allow_html=True,
-        )
-        row_cols[2].write(app_state_str)
-        row_cols[3].write(compute_str)
-        if app_url != "—":
-            row_cols[4].markdown(f"[{app_url}]({app_url})")
-        else:
-            row_cols[4].write("—")
-        row_cols[5].write(update_str)
-
-        start_disabled = not can_start(app)
-        stop_disabled = not can_stop(app)
-
-        if row_cols[6].button("▶", key=f"{key_prefix}_start_{i}", disabled=start_disabled, use_container_width=True, help="Start"):
-            try:
-                w.apps.start(app.name)
-                st.session_state["app_action_result"] = {
-                    "success": True,
-                    "message": f"App '{app.name}' is starting.",
-                }
-            except Exception as e:
-                st.session_state["app_action_result"] = {
-                    "success": False,
-                    "message": f"Failed to start '{app.name}': {e}",
-                }
-            st.rerun()
-
-        if row_cols[7].button("⏹", key=f"{key_prefix}_stop_{i}", disabled=stop_disabled, use_container_width=True, help="Stop"):
-            try:
-                w.apps.stop(app.name)
-                st.session_state["app_action_result"] = {
-                    "success": True,
-                    "message": f"App '{app.name}' is stopping.",
-                }
-            except Exception as e:
-                st.session_state["app_action_result"] = {
-                    "success": False,
-                    "message": f"Failed to stop '{app.name}': {e}",
-                }
-            st.rerun()
-
-        st.divider()
-
+    return lcs
 
 COMMON_TZ = [
     "UTC",
@@ -168,11 +59,120 @@ COMMON_TZ = [
     "Australia/Sydney",
 ]
 
-st.header("Databricks Apps")
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="apps_tz")
+st.header("Active Job Runs")
+
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="jobs_runs_tz")
 tz = pytz.timezone(selected_tz)
 
 w = WorkspaceClient(profile="DEFAULT")
-apps = list(w.apps.list())
 
-render(w, apps, tz, selected_tz, key_prefix="apps_page")
+with st.spinner("Fetching active job runs..."):
+    try:
+        active_runs = list(w.jobs.list_runs(active_only=True, expand_tasks=False))
+    except Exception as e:
+        st.error(f"Failed to fetch active runs: {e}")
+        st.stop()
+
+# Build cluster_id → ClusterState map for all job clusters (used to detect PENDING runs)
+try:
+    from databricks.sdk.service.compute import ClusterSource
+    cluster_states = {
+        c.cluster_id: c.state
+        for c in w.clusters.list()
+        if c.cluster_source == ClusterSource.JOB and c.cluster_id
+    }
+except Exception:
+    cluster_states = {}
+
+# Show action result from previous rerun
+if "run_action_result" in st.session_state:
+    result = st.session_state.pop("run_action_result")
+    if result["success"]:
+        st.success(result["message"])
+    else:
+        st.error(result["message"])
+
+total = len(active_runs)
+running = sum(1 for r in active_runs if get_lifecycle_str(r, cluster_states) == "RUNNING")
+pending = sum(
+    1 for r in active_runs
+    if get_lifecycle_str(r, cluster_states) in ("PENDING", "QUEUED", "BLOCKED", "WAITING")
+)
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Active", total)
+col2.metric("Running", running)
+col3.metric("Pending / Queued", pending)
+
+st.divider()
+
+if not active_runs:
+    st.info("No active job runs found.")
+    st.stop()
+
+# Table header
+header_cols = st.columns([0.15, 1.8, 0.7, 0.7, 0.9, 1.2, 0.5])
+for col, h in zip(
+    header_cols,
+    [None, "Run Name", "Job ID", "Run ID", "State", f"Start Time ({selected_tz})", None],
+):
+    if h:
+        col.markdown(f"**{h}**")
+
+st.divider()
+
+for i, run in enumerate(active_runs):
+    lcs_str = get_lifecycle_str(run, cluster_states)
+    indicator = LIFECYCLE_COLORS.get(lcs_str, "⚪")
+
+    run_name = run.run_name or f"run-{run.run_id}"
+
+    if run.start_time:
+        start_dt = dt.datetime.fromtimestamp(run.start_time / 1000, tz=pytz.utc).astimezone(tz)
+        start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        start_str = "—"
+
+    row_cols = st.columns([0.15, 1.8, 0.7, 0.7, 0.9, 1.2, 0.5])
+    row_cols[0].write(indicator)
+
+    if run.run_page_url:
+        row_cols[1].markdown(f"[{run_name}]({run.run_page_url})")
+    else:
+        row_cols[1].write(run_name)
+
+    row_cols[2].write(str(run.job_id) if run.job_id else "—")
+    row_cols[3].write(str(run.run_id) if run.run_id else "—")
+    state_msg = run.state.state_message if run.state and run.state.state_message else ""
+    if state_msg:
+        row_cols[4].markdown(
+            f"{lcs_str}<br><span style='color:gray; font-size:0.82em'>{state_msg}</span>",
+            unsafe_allow_html=True,
+        )
+    else:
+        row_cols[4].write(lcs_str)
+    row_cols[5].write(start_str)
+
+    can_cancel = lcs_str in ACTIVE_STATES
+
+    if row_cols[6].button(
+        "⏹",
+        key=f"cancel_run_{i}",
+        disabled=not can_cancel,
+        use_container_width=True,
+        help="Cancel run",
+    ):
+        try:
+            w.jobs.cancel_run(run_id=run.run_id)
+            st.session_state["run_action_result"] = {
+                "success": True,
+                "message": f"Run '{run_name}' (run_id={run.run_id}) cancellation requested.",
+            }
+        except Exception as e:
+            st.session_state["run_action_result"] = {
+                "success": False,
+                "message": f"Failed to cancel run '{run_name}': {e}",
+            }
+        st.rerun()
+
+    st.divider()
