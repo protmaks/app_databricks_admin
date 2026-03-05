@@ -4,6 +4,8 @@
 
 A Streamlit-based dashboard for monitoring and optimizing Databricks workspace usage, costs, and cluster/job activity. Deployed as a [Databricks App](https://docs.databricks.com/en/dev-tools/databricks-apps/index.html).
 
+In comparison with Databricks native Dashboards, the Databricks Apps have a more diverse functionality and can be used for a wider range of use cases. The main difference is that the Databricks Apps are not limited to the data stored in the Databricks tables and can use the Databricks API to get any information about the workspace and manage the workspace resources. This allows us to create a more comprehensive and interactive dashboard that can help users to optimize their costs and monitor their usage more effectively.
+
 ## Apps Pages
 
 ### Active Compute

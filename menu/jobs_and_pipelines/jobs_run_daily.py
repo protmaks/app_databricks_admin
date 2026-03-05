@@ -249,11 +249,9 @@ chart = (
 
 st.markdown("""
 <style>
-.st-emotion-cache-13tburv {
-    min-height: 0 !important;
-}
 div[data-testid="stVerticalBlock"] {
     gap: 0 !important;
+    min-height: 0 !important;
     overflow: visible !important;
 }
 div[data-testid="column"],
