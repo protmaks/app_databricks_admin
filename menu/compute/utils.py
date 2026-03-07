@@ -20,7 +20,7 @@ COMMON_TZ = [
 MAX_CLUSTER_EVENTS = 500
 
 
-def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
+def make_workspace_client(user_access_token: str | None = None) -> WorkspaceClient:
     """Return a WorkspaceClient for Databricks Apps or local development.
 
     In Databricks Apps the logged-in user's token is forwarded via the
@@ -29,21 +29,21 @@ def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
     callers to pass the token explicitly.  Falls back to SP OAuth or a local
     DEFAULT profile when no token is available.
     """
-    if user_token is None:
+    if user_access_token is None:
         try:
             import streamlit as st
-            user_token = st.context.headers.get("X-Forwarded-Access-Token")
+            user_access_token = st.context.headers.get('x-forwarded-access-token')
         except Exception:
             pass
 
     host = os.getenv("DATABRICKS_HOST")
-    if user_token and host:
+    if user_access_token and host:
         # Use the end-user's forwarded access token.
         # Pop OAuth env vars so the SDK doesn't see conflicting auth methods.
         _saved_id = os.environ.pop("DATABRICKS_CLIENT_ID", None)
         _saved_secret = os.environ.pop("DATABRICKS_CLIENT_SECRET", None)
         try:
-            client = WorkspaceClient(host=host, token=user_token)
+            client = WorkspaceClient(host=host, token=user_access_token)
         finally:
             if _saved_id is not None:
                 os.environ["DATABRICKS_CLIENT_ID"] = _saved_id
