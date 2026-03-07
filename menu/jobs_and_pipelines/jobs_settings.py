@@ -119,19 +119,19 @@ def extract_schedule_info(job) -> tuple[str, str]:
 
 
 def extract_threshold_tooltip(job) -> str | None:
-    health = getattr(job.settings, "health", None) if job.settings else None
-    rules = getattr(health, "rules", None) if health else None
-    if not rules:
+    if not job.settings:
         return None
-    lines = ["<b>Health Rules:</b>"]
-    for r in rules:
-        metric = getattr(r, "metric", "?")
-        op = getattr(r, "op", "?")
-        value = getattr(r, "value", "?")
-        m_str = metric.value if hasattr(metric, "value") else str(metric)
-        o_str = op.value if hasattr(op, "value") else str(op)
-        lines.append(f"{m_str} {o_str} {value}")
-    return "<br>".join(lines)
+    timeout = getattr(job.settings, "timeout_seconds", None)
+    if not timeout:
+        return None
+    minutes, seconds = divmod(int(timeout), 60)
+    hours, minutes = divmod(minutes, 60)
+    parts = []
+    if hours:   parts.append(f"{hours}h")
+    if minutes: parts.append(f"{minutes}m")
+    if seconds: parts.append(f"{seconds}s")
+    duration = " ".join(parts) or f"{timeout}s"
+    return f"<b>Timeout:</b> {duration}"
 
 
 def extract_notification_tooltip(job) -> str | None:
@@ -198,13 +198,28 @@ all_creators = sorted({
     for j in jobs
 })
 
+# Restore filter state from URL query params on first load
+if "jobs_settings_creators" not in st.session_state:
+    _qp = st.query_params.get("creators", "")
+    st.session_state["jobs_settings_creators"] = [
+        c for c in _qp.split(",") if c in all_creators
+    ] if _qp else []
+
+def _on_creators_change():
+    vals = st.session_state.get("jobs_settings_creators", [])
+    if vals:
+        st.query_params["creators"] = ",".join(vals)
+    elif "creators" in st.query_params:
+        del st.query_params["creators"]
+
 col_creator, col_teams = st.columns([0.5, 0.5])
 selected_creators = col_creator.multiselect(
     "Created by",
     options=all_creators,
-    default=[],
+    default=st.session_state["jobs_settings_creators"],
     placeholder="All creators",
     key="jobs_settings_creators",
+    on_change=_on_creators_change,
 )
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 
@@ -253,8 +268,7 @@ scheduled = sum(
 )
 has_threshold = sum(
     1 for j in jobs
-    if getattr(j.settings, "health", None)
-    and getattr(j.settings.health, "rules", None)
+    if extract_threshold_tooltip(j) is not None
 )
 has_notifications = sum(
     1 for j in jobs
@@ -266,7 +280,7 @@ has_access = sum(
 )
 
 def pct(n: int) -> str:
-    return f"{n} ({n * 100 // total}%)" if total else str(n)
+    return f"{n}" if total else str(n)
 
 # Stats aligned with table columns: Job Name | Cluster Type | Cluster Size | Runtime | Schedule | Threshold | Notif. | Access
 stat_cols = st.columns(COL_WIDTHS)
@@ -280,8 +294,8 @@ def _stat(col, label: str, value, color: str = "inherit") -> None:
 _jc_color = "#ff4b4b" if job_cluster_count > 0 else "inherit"
 _stat(stat_cols[0], "Total Jobs",           total)
 stat_cols[1].markdown(
-    f"<div style='font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Job Cluster</div>"
-    f"<div style='font-size:1.6em;font-weight:600;color:{_jc_color}'>{pct(job_cluster_count)}</div>",
+    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Job Cluster</div>"
+    f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_jc_color}'>{pct(job_cluster_count)}</div>",
     unsafe_allow_html=True,
 )
 stat_cols[2].empty()
@@ -315,8 +329,8 @@ st.divider()
 # ── sort ───────────────────────────────────────────────────────────────────────
 
 if "jobs_sort_col" not in st.session_state:
-    st.session_state.jobs_sort_col = None
-    st.session_state.jobs_sort_dir = 1
+    st.session_state.jobs_sort_col = st.query_params.get("sort_col") or None
+    st.session_state.jobs_sort_dir = int(st.query_params.get("sort_dir", "1"))
 
 def _sort_key(job):
     col = st.session_state.jobs_sort_col
@@ -357,6 +371,8 @@ for hcol, h in zip(header_cols, COL_HEADERS):
         else:
             st.session_state.jobs_sort_col = h
             st.session_state.jobs_sort_dir = 1
+        st.query_params["sort_col"] = st.session_state.jobs_sort_col
+        st.query_params["sort_dir"] = str(st.session_state.jobs_sort_dir)
         st.rerun()
 
 st.divider()
@@ -395,9 +411,9 @@ for job in jobs:
         unsafe_allow_html=True,
     )
     if cluster_type == "Existing Cluster":
-        row[1].markdown("<span class='red-cell'>Existing Cluster</span>", unsafe_allow_html=True)
+        row[1].markdown("<div style='text-align:center'><span class='red-cell'>Existing Cluster</span></div>", unsafe_allow_html=True)
     else:
-        row[1].write(cluster_type)
+        row[1].markdown(f"<div style='text-align:center'>{cluster_type}</div>", unsafe_allow_html=True)
     row[2].write(cluster_size)
     _sv_color = "#ff8c00" if _is_old_runtime(spark_ver) else "inherit"
     row[3].markdown(f"<div style='text-align:center;color:{_sv_color}'>{spark_ver}</div>", unsafe_allow_html=True)
