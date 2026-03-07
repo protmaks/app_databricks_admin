@@ -23,10 +23,19 @@ MAX_CLUSTER_EVENTS = 500
 def make_workspace_client(user_token: str | None = None) -> WorkspaceClient:
     """Return a WorkspaceClient for Databricks Apps or local development.
 
-    In Databricks Apps pass the forwarded user token (X-Forwarded-Access-Token)
-    to act on behalf of the logged-in user.  Falls back to SP OAuth or a local
-    DEFAULT profile when no token is supplied.
+    In Databricks Apps the logged-in user's token is forwarded via the
+    X-Forwarded-Access-Token request header.  We read it automatically so
+    every page acts on behalf of the authenticated user without requiring
+    callers to pass the token explicitly.  Falls back to SP OAuth or a local
+    DEFAULT profile when no token is available.
     """
+    if user_token is None:
+        try:
+            import streamlit as st
+            user_token = st.context.headers.get("X-Forwarded-Access-Token")
+        except Exception:
+            pass
+
     host = os.getenv("DATABRICKS_HOST")
     if user_token and host:
         # Use the end-user's forwarded access token.
