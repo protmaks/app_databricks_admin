@@ -53,6 +53,52 @@ div[data-testid="stHorizontalBlock"] button:hover {
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+_DOW_NAME = {"0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed",
+             "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun"}
+_DOW_FULL = {"0": "Sundays", "1": "Mondays", "2": "Tuesdays", "3": "Wednesdays",
+             "4": "Thursdays", "5": "Fridays", "6": "Saturdays", "7": "Sundays"}
+
+
+def cron_to_human(cron: str) -> str:
+    """Convert a 5-field cron to a short human-readable string."""
+    try:
+        parts = cron.strip().split()
+        if len(parts) != 5:
+            return cron
+        minute, hour, dom, month, dow = parts
+
+        # Every N minutes
+        if minute.startswith("*/") and hour == "*" and dom == "*" and month == "*" and dow == "*":
+            n = minute[2:]
+            return "Every minute" if n == "1" else f"Every {n} min"
+
+        # Every N hours (at :00)
+        if minute == "0" and hour.startswith("*/") and dom == "*" and month == "*" and dow == "*":
+            n = hour[2:]
+            return "Every hour" if n == "1" else f"Every {n}h"
+
+        # Fixed time patterns
+        if minute.isdigit() and hour.isdigit():
+            t = f"{int(hour):02d}:{int(minute):02d}"
+            if dom == "*" and month == "*":
+                if dow == "*":
+                    return f"Daily at {t}"
+                if dow in ("1-5", "MON-FRI"):
+                    return f"Weekdays at {t}"
+                if dow in ("0,6", "6,0", "SAT,SUN", "SUN,SAT"):
+                    return f"Weekends at {t}"
+                if dow in _DOW_FULL:
+                    return f"{_DOW_FULL[dow]} at {t}"
+                # multiple days like 1,3,5
+                days = [_DOW_NAME.get(d, d) for d in dow.split(",")]
+                return f"{'/'.join(days)} at {t}"
+            if dom != "*" and month == "*" and dow in ("*", "?"):
+                return f"Monthly on {dom} at {t}"
+        return cron
+    except Exception:
+        return cron
+
+
 def make_tooltip(icon: str, html_content: str | None) -> str:
     if not html_content:
         return icon
@@ -115,17 +161,18 @@ def extract_cluster_info(job, cluster_cache: dict | None = None) -> tuple[str, s
     return "Serverless", "—", "—"
 
 
-def extract_schedule_info(job) -> tuple[str, str]:
+def extract_schedule_info(job) -> tuple[str, str, str]:
     sched = getattr(job.settings, "schedule", None) if job.settings else None
     if sched is None:
-        return "Not scheduled", ""
+        return "Not scheduled", "", ""
     quartz = getattr(sched, "quartz_cron_expression", None) or ""
     pause = getattr(sched, "pause_status", None)
+    tz = getattr(sched, "timezone_id", None) or ""
     cron5 = quartz_to_standard_cron(quartz) if quartz else ""
     pause_str = (pause.value if hasattr(pause, "value") else str(pause)) if pause is not None else ""
     paused = pause_str.split(".")[-1].upper() == "PAUSED"
     label = "Scheduled (paused)" if paused else "Scheduled"
-    return label, cron5 or quartz
+    return label, cron5 or quartz, tz
 
 
 def extract_threshold_tooltip(job) -> str | None:
@@ -552,7 +599,7 @@ def _sort_key(job):
         except (ValueError, IndexError):
             return (0, 0)
     if col == "Schedule":
-        label, _ = extract_schedule_info(job)
+        label, *_ = extract_schedule_info(job)
         return label
     if col == "Threshold":  return 0 if extract_threshold_tooltip(job) else 1
     if col == "Notif.":     return 0 if extract_notification_tooltip(job) else 1
@@ -597,7 +644,7 @@ for job in jobs:
         or getattr(job, "creator_user_name", None)
         or "—"
     )
-    sched_label, cron_str               = extract_schedule_info(job)
+    sched_label, cron_str, sched_tz = extract_schedule_info(job)
 
     _checks = _job_checks[job.job_id]
     _matched_teams = _checks["teams"]
@@ -636,9 +683,12 @@ for job in jobs:
     _is_paused = "paused" in sched_label.lower()
     if cron_str:
         _label_html = f"<span style='color:#ff8c00'>{sched_label}</span>" if _is_paused else sched_label
+        _cron_human = cron_to_human(cron_str)
+        _tz_short = sched_tz.split("/")[-1].replace("_", " ") if sched_tz else ""
+        _tz_html = f" <span style='color:gray;font-size:0.78em'>({_tz_short})</span>" if _tz_short else ""
         sched_display = (
             f"{_label_html}<br>"
-            f"<span style='color:gray;font-size:0.82em'>{cron_str}</span>"
+            f"<span style='color:gray;font-size:0.82em'>{_cron_human}{_tz_html}</span>"
         )
     elif sched_label == "Not scheduled":
         sched_display = "<span style='color:red'>Not scheduled</span>"
