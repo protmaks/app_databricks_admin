@@ -13,6 +13,16 @@ tz = pytz.timezone(selected_tz)
 
 w = make_workspace_client()
 
+# ── DEBUG: показывает какой токен/метод используется ──────────────────────────
+_fwd_token = st.context.headers.get("X-Forwarded-Access-Token", "")
+with st.expander("🔍 Auth debug (временно)", expanded=False):
+    st.write("X-Forwarded-Access-Token present:", bool(_fwd_token))
+    if _fwd_token:
+        st.write("Token prefix:", _fwd_token[:30] + "...")
+    st.write("DATABRICKS_HOST set:", bool(__import__("os").getenv("DATABRICKS_HOST")))
+    st.write("DATABRICKS_CLIENT_ID set:", bool(__import__("os").getenv("DATABRICKS_CLIENT_ID")))
+# ── END DEBUG ─────────────────────────────────────────────────────────────────
+
 # ── Fetch all data ─────────────────────────────────────────────────────────────
 with st.spinner("Loading compute data..."):
     all_clusters = list(w.clusters.list())

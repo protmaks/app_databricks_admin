@@ -6,13 +6,10 @@ command: [
 
 env:
   - name: "DATABRICKS_WAREHOUSE_ID"
-    valueFrom: "33404b346989db8d"
+    value: "33404b346989db8d"
   - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
     value: "false"
 
 oauth:
   scopes:
-    - name: clusters
-    - name: sql
-    - name: jobs
-    - name: pipelines
+    - name: all-apis
