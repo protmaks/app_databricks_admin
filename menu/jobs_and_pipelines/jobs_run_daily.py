@@ -5,14 +5,21 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk.service.jobs import RunType
-from menu.compute.utils import make_workspace_client, COMMON_TZ
+from menu.compute.utils import make_workspace_client, COMMON_TZ, match_team_rules
+from menu.settings.storage import get_cached_settings
 
 st.header("Job Runs History")
+
+_w_settings = make_workspace_client()
+_settings = get_cached_settings(_w_settings)
+_global_tz = _settings["timezone"]
+_teams_cfg = _settings["teams"]
+_team_names = [t["name"] for t in _teams_cfg]
 
 # Restore filter state from URL query params on first load
 if "last_run_tz" not in st.session_state:
     _qp_tz = st.query_params.get("tz", "")
-    st.session_state["last_run_tz"] = _qp_tz if _qp_tz in COMMON_TZ else COMMON_TZ[0]
+    st.session_state["last_run_tz"] = _qp_tz if _qp_tz in COMMON_TZ else _global_tz
 
 if "last_run_days" not in st.session_state:
     try:
@@ -36,7 +43,10 @@ lookback_days = col_days.slider(
     value=st.session_state["last_run_days"],
     key="last_run_days", on_change=_on_days_change,
 )
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+selected_teams = col_teams.multiselect(
+    "Teams", options=_team_names, default=[], placeholder="All teams",
+    key="last_run_teams",
+)
 
 tz = pytz.timezone(selected_tz)
 now_local = dt.datetime.now(tz)
@@ -150,6 +160,20 @@ for run in active_runs:
             "status": "RUNNING",
         }
     )
+
+if selected_teams:
+    matched_ids = {
+        j.job_id for j in all_jobs
+        if j.job_id and any(
+            m in selected_teams
+            for m in match_team_rules(
+                j.settings.name or f"job-{j.job_id}" if j.settings else f"job-{j.job_id}",
+                getattr(j, "creator_user_name", None) or "unknown",
+                _teams_cfg,
+            )
+        )
+    }
+    records = [r for r in records if r.get("job_id") in matched_ids]
 
 if not records:
     st.info(f"No job runs found in the last {lookback_days} days.")

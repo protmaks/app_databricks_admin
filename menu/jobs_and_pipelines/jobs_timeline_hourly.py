@@ -5,19 +5,29 @@ import pandas as pd
 import pytz
 import streamlit as st
 from croniter import croniter
-from menu.compute.utils import quartz_to_standard_cron, resolve_display_state, make_workspace_client, COMMON_TZ
+from menu.compute.utils import quartz_to_standard_cron, resolve_display_state, make_workspace_client, COMMON_TZ, match_team_rules
+from menu.settings.storage import get_cached_settings
 
 st.header("Jobs Execution Timeline")
 
+_w_settings = make_workspace_client()
+_settings = get_cached_settings(_w_settings)
+_global_tz = _settings["timezone"]
+_teams_cfg = _settings["teams"]
+_team_names = [t["name"] for t in _teams_cfg]
+
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
-_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
-_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+_tz_from_url = st.query_params.get("tz", _global_tz)
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else COMMON_TZ.index(_global_tz) if _global_tz in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=_tz_index, key="jobs_timeline_tz"
 )
 st.query_params["tz"] = selected_tz
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+selected_teams = col_teams.multiselect(
+    "Teams", options=_team_names, default=[], placeholder="All teams",
+    key="timeline_teams",
+)
 tz = pytz.timezone(selected_tz)
 
 if selected_date == dt.date.today():
@@ -178,6 +188,20 @@ with st.spinner("Fetching scheduled jobs…"):
             continue
 
 all_segments = segments + scheduled_segments
+
+if selected_teams:
+    matched_ids = {
+        j.job_id for j in all_jobs
+        if j.job_id and any(
+            m in selected_teams
+            for m in match_team_rules(
+                j.settings.name or f"job-{j.job_id}" if j.settings else f"job-{j.job_id}",
+                getattr(j, "creator_user_name", None) or "unknown",
+                _teams_cfg,
+            )
+        )
+    }
+    all_segments = [s for s in all_segments if s.get("job_id") in matched_ids]
 
 if not all_segments:
     st.info("No job runs or scheduled jobs found for the selected date.")

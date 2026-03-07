@@ -6,6 +6,7 @@ import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from menu.compute.utils import make_workspace_client, COMMON_TZ, MAX_CLUSTER_EVENTS
+from menu.settings.storage import get_cached_settings
 from databricks.sdk.service.compute import (
     ClusterSource,
     EventType,
@@ -13,6 +14,11 @@ from databricks.sdk.service.compute import (
 )
 
 st.header("Cluster State Timeline")
+
+_w_settings = make_workspace_client()
+_settings = get_cached_settings(_w_settings)
+_global_tz = _settings["timezone"]
+_team_names = [t["name"] for t in _settings["teams"]]
 
 daily_chart_container = st.container()
 timeline_chart_container = st.container()
@@ -26,14 +32,16 @@ if "timeline_date" not in st.session_state:
 if _pending is not None:
     st.session_state["timeline_date"] = _pending
 selected_date = col_date.date_input("Date", key="timeline_date")
-_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
-_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+_tz_from_url = st.query_params.get("tz", _global_tz)
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else COMMON_TZ.index(_global_tz) if _global_tz in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=_tz_index, key="timeline_tz"
 )
 st.query_params["tz"] = selected_tz
 col_teams.multiselect(
-    "Teams", options=[], default=[], disabled=True, help="Coming soon"
+    "Teams", options=_team_names, default=[], placeholder="All teams",
+    key="timeline_allpurp_teams",
+    help="Teams filter applies to Job pages. Shown here for reference.",
 )
 tz = pytz.timezone(selected_tz)
 

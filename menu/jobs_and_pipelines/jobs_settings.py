@@ -1,11 +1,15 @@
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 
-from menu.compute.utils import quartz_to_standard_cron, make_workspace_client
+from menu.compute.utils import quartz_to_standard_cron, make_workspace_client, match_team_rules
+from menu.settings.storage import get_cached_settings
 
 st.header("Jobs Settings")
 
 w = make_workspace_client()
+_settings = get_cached_settings(w)
+_teams_cfg = _settings["teams"]
+_team_names = [t["name"] for t in _teams_cfg]
 
 st.markdown("""<style>
 div[data-testid="column"],
@@ -221,12 +225,28 @@ selected_creators = col_creator.multiselect(
     key="jobs_settings_creators",
     on_change=_on_creators_change,
 )
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+selected_teams = col_teams.multiselect(
+    "Teams", options=_team_names, default=[], placeholder="All teams",
+    key="jobs_settings_teams",
+)
 
 if selected_creators:
     jobs = [
         j for j in jobs
         if (getattr(j, "creator_user_name", None) or "unknown") in selected_creators
+    ]
+
+if selected_teams:
+    jobs = [
+        j for j in jobs
+        if any(
+            m in selected_teams
+            for m in match_team_rules(
+                (j.settings.name or f"job-{j.job_id}") if j.settings else f"job-{j.job_id}",
+                getattr(j, "creator_user_name", None) or "unknown",
+                _teams_cfg,
+            )
+        )
     ]
 
 if not jobs:

@@ -34,6 +34,9 @@ menu = {
         st.Page("menu/jobs_and_pipelines/jobs_timeline_hourly.py", title="Jobs Timeline (Hourly)", icon=":material/schedule:"),
         st.Page("menu/jobs_and_pipelines/jobs_fails_details.py", title="Job Fails Details", icon=":material/bug_report:"),
     ],
+    "Admin": [
+        st.Page("menu/settings/settings_page.py", title="Settings", icon=":material/settings:"),
+    ],
 }
 
 st.markdown(
