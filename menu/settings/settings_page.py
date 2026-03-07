@@ -97,10 +97,10 @@ for team_idx, team in enumerate(teams):
     expanded_key = f"expanded_{team_id}"
     is_expanded = st.session_state.get(expanded_key, False) or st.session_state.get(confirm_key, False)
 
-    _default_marker = " ★" if team_id in st.session_state["settings_default_teams"] else ""
-    with st.expander((team["name"] or f"Team {team_idx + 1}") + _default_marker, expanded=is_expanded):
+    _default_marker = "★ " if team_id in st.session_state["settings_default_teams"] else ""
+    with st.expander(_default_marker + (team["name"] or f"Team {team_idx + 1}"), expanded=is_expanded):
         # Default checkbox + Team name + Delete button in one row
-        col_default, col_name, col_del = st.columns([0.07, 0.81, 0.12])
+        col_default, col_name, col_del = st.columns([0.08, 0.83, 0.09])
 
         def _on_default_change(tid=team_id):
             if st.session_state[f"team_default_{tid}"]:
@@ -111,13 +111,11 @@ for team_idx, team in enumerate(teams):
                     x for x in st.session_state["settings_default_teams"] if x != tid
                 ]
 
-        col_default.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
         col_default.checkbox(
             "Default",
             value=team_id in st.session_state["settings_default_teams"],
             key=f"team_default_{team_id}",
             on_change=_on_default_change,
-            label_visibility="collapsed",
             help="Pre-select this team on all filter pages",
         )
 
@@ -158,7 +156,7 @@ for team_idx, team in enumerate(teams):
         for cond_idx, cond in enumerate(conditions):
             cond_key = f"{team_id}_{cond_idx}"
             ccol_logic, ccol_field, ccol_op, ccol_val, ccol_del = st.columns(
-                [0.12, 0.23, 0.23, 0.35, 0.07]
+                [0.07, 0.15, 0.1, 0.61, 0.07]
             )
 
             # Logic column: "IF" label for first row, AND/OR selector for the rest
