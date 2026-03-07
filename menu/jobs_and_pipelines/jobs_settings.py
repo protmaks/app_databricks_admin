@@ -193,7 +193,7 @@ def extract_threshold_tooltip(job) -> str | None:
 
 
 def _check_access(job, matched_teams: list[str], teams_by_name: dict, job_can_manage: dict) -> str:
-    """Returns 'no_team', 'ok', or 'fail'.
+    """Returns 'no_team', 'no_param', 'ok', or 'fail'.
     Uses pre-fetched Permissions API data (CAN_MANAGE or IS_OWNER).
     """
     if not matched_teams:
@@ -203,13 +203,13 @@ def _check_access(job, matched_teams: list[str], teams_by_name: dict, job_can_ma
         cfg = teams_by_name.get(tname, {})
         access_val = (cfg.get("access") or "").strip()
         if not access_val:
-            return "ok" if can_manage_set else "fail"
+            return "no_param"
         return "ok" if access_val in can_manage_set else "fail"
     return "fail"
 
 
 def _check_run_as(job, matched_teams: list[str], teams_by_name: dict, run_as_value: str | None = None) -> str:
-    """Returns 'no_team', 'ok', or 'fail'."""
+    """Returns 'no_team', 'no_param', 'ok', or 'fail'."""
     if not matched_teams:
         return "no_team"
     job_run_as = (run_as_value or getattr(job, "creator_user_name", None) or "").strip().lower()
@@ -217,13 +217,13 @@ def _check_run_as(job, matched_teams: list[str], teams_by_name: dict, run_as_val
         cfg = teams_by_name.get(tname, {})
         allowed = [a.strip().lower() for a in (cfg.get("run_as") or "").split(",") if a.strip()]
         if not allowed:
-            return "ok"
+            return "no_param"
         return "ok" if job_run_as in allowed else "fail"
     return "fail"
 
 
 def _check_notification(job, matched_teams: list[str], teams_by_name: dict) -> str:
-    """Returns 'no_team', 'ok', or 'fail'."""
+    """Returns 'no_team', 'no_param', 'ok', or 'fail'."""
     if not matched_teams:
         return "no_team"
     email_set = set()
@@ -237,7 +237,7 @@ def _check_notification(job, matched_teams: list[str], teams_by_name: dict) -> s
         cfg = teams_by_name.get(tname, {})
         notif_val = (cfg.get("notification") or "").strip()
         if not notif_val:
-            return "ok" if email_set else "fail"
+            return "no_param"
         return "ok" if notif_val in email_set else "fail"
     return "fail"
 
@@ -302,7 +302,7 @@ def extract_notebooks_path_tooltip(job) -> str | None:
 
 
 def _check_notebooks_path(job, matched_teams: list[str], teams_by_name: dict) -> str:
-    """Returns 'no_team', 'ok', or 'fail'."""
+    """Returns 'no_team', 'no_param', 'ok', or 'fail'."""
     if not matched_teams:
         return "no_team"
     tasks = (job.settings.tasks or []) if job.settings else []
@@ -317,7 +317,7 @@ def _check_notebooks_path(job, matched_teams: list[str], teams_by_name: dict) ->
         cfg = teams_by_name.get(tname, {})
         nb_val = (cfg.get("notebooks_path") or "").strip()
         if not nb_val:
-            return "ok" if job_paths else "fail"
+            return "no_param"
         return "ok" if any(p.startswith(nb_val) for p in job_paths) else "fail"
     return "fail"
 
@@ -356,12 +356,23 @@ all_creators = sorted({
     for j in jobs
 })
 
+all_run_as = sorted({
+    _run_as_map.get(j.job_id) or "unknown"
+    for j in jobs
+})
+
 # Restore filter state from URL query params on first load
 if "jobs_settings_creators" not in st.session_state:
     _qp = st.query_params.get("creators", "")
     st.session_state["jobs_settings_creators"] = [
         c for c in _qp.split(",") if c in all_creators
     ] if _qp else []
+
+if "jobs_settings_run_as" not in st.session_state:
+    _qp_ra = st.query_params.get("run_as", "")
+    st.session_state["jobs_settings_run_as"] = [
+        r for r in _qp_ra.split(",") if r in all_run_as
+    ] if _qp_ra else []
 
 def _on_creators_change():
     vals = st.session_state.get("jobs_settings_creators", [])
@@ -370,7 +381,14 @@ def _on_creators_change():
     elif "creators" in st.query_params:
         del st.query_params["creators"]
 
-col_creator, col_teams = st.columns([0.5, 0.5])
+def _on_run_as_change():
+    vals = st.session_state.get("jobs_settings_run_as", [])
+    if vals:
+        st.query_params["run_as"] = ",".join(vals)
+    elif "run_as" in st.query_params:
+        del st.query_params["run_as"]
+
+col_creator, col_run_as, col_teams = st.columns([0.33, 0.33, 0.33])
 selected_creators = col_creator.multiselect(
     "Created by",
     options=all_creators,
@@ -378,6 +396,14 @@ selected_creators = col_creator.multiselect(
     placeholder="All creators",
     key="jobs_settings_creators",
     on_change=_on_creators_change,
+)
+selected_run_as = col_run_as.multiselect(
+    "Run as",
+    options=all_run_as,
+    default=st.session_state["jobs_settings_run_as"],
+    placeholder="All run as",
+    key="jobs_settings_run_as",
+    on_change=_on_run_as_change,
 )
 if "jobs_settings_teams" not in st.session_state:
     _default_team_ids = _settings.get("default_teams", [])
@@ -393,6 +419,12 @@ if selected_creators:
     jobs = [
         j for j in jobs
         if (getattr(j, "creator_user_name", None) or "unknown") in selected_creators
+    ]
+
+if selected_run_as:
+    jobs = [
+        j for j in jobs
+        if (_run_as_map.get(j.job_id) or "unknown") in selected_run_as
     ]
 
 if selected_teams:
@@ -678,6 +710,8 @@ for job in jobs:
     def _cell(status, html):
         if status == "no_team":
             return make_tooltip("<span style='color:orange;font-size:0.8em''>no team</span>", html)
+        if status == "no_param":
+            return make_tooltip("<span style='color:gray;font-size:0.8em'>set params</span>", html)
         return make_tooltip("✓" if status == "ok" else "❗", html)
 
     _multi_team_cell = "<span style='color:orange;font-size:0.8em'>more 1 team</span>"
@@ -715,7 +749,8 @@ for job in jobs:
         row[2].markdown("<div style='text-align:center'><span class='red-cell'>All-purpose</span></div>", unsafe_allow_html=True)
     else:
         row[2].markdown(f"<div style='text-align:center'>{cluster_type}</div>", unsafe_allow_html=True)
-    _run_as_color = "#ff8c00" if _checks["run_as"] == "fail" else "inherit"
+    _run_as_status = _checks["run_as"]
+    _run_as_color = "#ff8c00" if _run_as_status == "fail" else ("rgb(201 197 197)" if _run_as_status == "no_param" else "inherit")
     row[3].html(f"<span style='color:{_run_as_color}'>{run_as}</span>")
     _sv_color = "#ff8c00" if _is_old_runtime(spark_ver) else "inherit"
     row[4].markdown(f"<div style='text-align:center;color:{_sv_color}'>{spark_ver}</div>", unsafe_allow_html=True)
