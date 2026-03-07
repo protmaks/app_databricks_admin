@@ -64,6 +64,9 @@ if _col_btn.button("＋ Add Team", key="add_team_btn"):
             "id": str(uuid.uuid4()),
             "name": "",
             "conditions": [],
+            "notification": "",
+            "access": "",
+            "notebooks_path": "",
         }
     )
     st.rerun()
@@ -188,6 +191,42 @@ for team_idx, team in enumerate(teams):
                 new_cond["logic"] = "AND"
             conditions.append(new_cond)
             st.rerun()
+
+        # ── Jobs Settings ─────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**Jobs Settings**")
+        js_col1, js_col2, js_col3 = st.columns(3)
+
+        def _on_notification_change(tidx=team_idx, tid=team_id):
+            teams[tidx]["notification"] = st.session_state[f"team_notification_{tid}"]
+
+        def _on_access_change(tidx=team_idx, tid=team_id):
+            teams[tidx]["access"] = st.session_state[f"team_access_{tid}"]
+
+        def _on_notebooks_path_change(tidx=team_idx, tid=team_id):
+            teams[tidx]["notebooks_path"] = st.session_state[f"team_notebooks_path_{tid}"]
+
+        js_col1.text_input(
+            "Notification",
+            value=team.get("notification", ""),
+            key=f"team_notification_{team_id}",
+            placeholder="e.g. team@example.com",
+            on_change=_on_notification_change,
+        )
+        js_col2.text_input(
+            "Access",
+            value=team.get("access", ""),
+            key=f"team_access_{team_id}",
+            placeholder="e.g. user1, group1",
+            on_change=_on_access_change,
+        )
+        js_col3.text_input(
+            "Notebooks path",
+            value=team.get("notebooks_path", ""),
+            key=f"team_notebooks_path_{team_id}",
+            placeholder="e.g. /Shared/team/notebooks",
+            on_change=_on_notebooks_path_change,
+        )
 
 # ── Save ─────────────────────────────────────────────────────────────────────
 st.divider()

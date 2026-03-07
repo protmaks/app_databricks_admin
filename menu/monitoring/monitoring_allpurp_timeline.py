@@ -38,11 +38,11 @@ selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=_tz_index, key="timeline_tz"
 )
 st.query_params["tz"] = selected_tz
-col_teams.multiselect(
-    "Teams", options=_team_names, default=[], placeholder="All teams",
-    key="timeline_allpurp_teams",
-    help="Teams filter applies to Job pages. Shown here for reference.",
-)
+# col_teams.multiselect(
+#     "Teams", options=_team_names, default=[], placeholder="All teams",
+#     key="timeline_allpurp_teams",
+#     help="Teams filter applies to Job pages. Shown here for reference.",
+# )
 tz = pytz.timezone(selected_tz)
 
 # Day boundaries in epoch ms (in selected timezone)

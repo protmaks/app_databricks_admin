@@ -10,6 +10,7 @@ w = make_workspace_client()
 _settings = get_cached_settings(w)
 _teams_cfg = _settings["teams"]
 _team_names = [t["name"] for t in _teams_cfg]
+_teams_by_name = {t["name"]: t for t in _teams_cfg}
 
 st.markdown("""<style>
 div[data-testid="column"],
@@ -105,7 +106,7 @@ def extract_cluster_info(job) -> tuple[str, str, str]:
             spec = job_clusters_map.get(task.job_cluster_key)
             return "Job Cluster", _format_cluster_size(spec), _format_spark_version(spec)
         if getattr(task, "existing_cluster_id", None):
-            return "Existing Cluster", "—", "—"
+            return "All-purpose", "—", "—"
 
     return "Serverless", "—", "—"
 
@@ -136,6 +137,42 @@ def extract_threshold_tooltip(job) -> str | None:
     if seconds: parts.append(f"{seconds}s")
     duration = " ".join(parts) or f"{timeout}s"
     return f"<b>Timeout:</b> {duration}"
+
+
+def _check_access(job, matched_teams: list[str], teams_by_name: dict, job_can_manage: dict) -> str:
+    """Returns 'no_team', 'ok', or 'fail'.
+    Uses pre-fetched Permissions API data (CAN_MANAGE or IS_OWNER).
+    """
+    if not matched_teams:
+        return "no_team"
+    can_manage_set = job_can_manage.get(job.job_id, set())
+    for tname in matched_teams:
+        cfg = teams_by_name.get(tname, {})
+        access_val = (cfg.get("access") or "").strip()
+        if not access_val:
+            return "ok" if can_manage_set else "fail"
+        return "ok" if access_val in can_manage_set else "fail"
+    return "fail"
+
+
+def _check_notification(job, matched_teams: list[str], teams_by_name: dict) -> str:
+    """Returns 'no_team', 'ok', or 'fail'."""
+    if not matched_teams:
+        return "no_team"
+    email_set = set()
+    email = getattr(job.settings, "email_notifications", None) if job.settings else None
+    if email:
+        for ev in ("on_failure", "on_success", "on_start", "on_duration_warning_threshold_exceeded"):
+            addrs = getattr(email, ev, None)
+            if addrs:
+                email_set.update(addrs)
+    for tname in matched_teams:
+        cfg = teams_by_name.get(tname, {})
+        notif_val = (cfg.get("notification") or "").strip()
+        if not notif_val:
+            return "ok" if email_set else "fail"
+        return "ok" if notif_val in email_set else "fail"
+    return "fail"
 
 
 def extract_notification_tooltip(job) -> str | None:
@@ -179,6 +216,43 @@ def extract_access_tooltip(job) -> str | None:
         p_str = perm.value if hasattr(perm, "value") else str(perm)
         lines.append(f"{principal}: {p_str}")
     return "<br>".join(lines)
+
+
+def extract_notebooks_path_tooltip(job) -> str | None:
+    if not job.settings:
+        return None
+    tasks = job.settings.tasks or []
+    paths = []
+    for task in tasks:
+        nb = getattr(task, "notebook_task", None)
+        if nb:
+            path = getattr(nb, "notebook_path", None)
+            if path:
+                paths.append(path)
+    if not paths:
+        return None
+    return "<br>".join(f"<b>Notebook:</b> {p}" for p in paths)
+
+
+def _check_notebooks_path(job, matched_teams: list[str], teams_by_name: dict) -> str:
+    """Returns 'no_team', 'ok', or 'fail'."""
+    if not matched_teams:
+        return "no_team"
+    tasks = (job.settings.tasks or []) if job.settings else []
+    job_paths = []
+    for task in tasks:
+        nb = getattr(task, "notebook_task", None)
+        if nb:
+            path = getattr(nb, "notebook_path", None)
+            if path:
+                job_paths.append(path)
+    for tname in matched_teams:
+        cfg = teams_by_name.get(tname, {})
+        nb_val = (cfg.get("notebooks_path") or "").strip()
+        if not nb_val:
+            return "ok" if job_paths else "fail"
+        return "ok" if any(p.startswith(nb_val) for p in job_paths) else "fail"
+    return "fail"
 
 
 # ── data fetch ─────────────────────────────────────────────────────────────────
@@ -253,10 +327,47 @@ if not jobs:
     st.info("No jobs match the selected filters.")
     st.stop()
 
+# ── permissions pre-fetch (Permissions API) ────────────────────────────────────
+_job_can_manage: dict[int, set[str]] = {}
+with st.spinner("Fetching job permissions…"):
+    for _j in jobs:
+        try:
+            _obj_perms = w.permissions.get("jobs", str(_j.job_id))
+            _can_manage: set[str] = set()
+            for _acl_e in (_obj_perms.access_control_list or []):
+                _p = (
+                    getattr(_acl_e, "user_name", None)
+                    or getattr(_acl_e, "group_name", None)
+                    or getattr(_acl_e, "service_principal_name", None)
+                )
+                if not _p:
+                    continue
+                for _perm in (getattr(_acl_e, "all_permissions", None) or []):
+                    _level = getattr(_perm, "permission_level", None)
+                    _ls = _level.value if _level and hasattr(_level, "value") else (str(_level) if _level else "")
+                    if _ls in ("CAN_MANAGE", "IS_OWNER"):
+                        _can_manage.add(_p)
+                        break
+            _job_can_manage[_j.job_id] = _can_manage
+        except Exception:
+            _job_can_manage[_j.job_id] = set()
 
-COL_WIDTHS  = [2.0, 0.9, 1.2, 0.8, 1.0, 0.8, 0.6, 0.6]
-COL_HEADERS = ["Job Name", "Cluster Type", "Cluster Size", "Runtime", "Schedule", "Threshold", "Notif.", "Access"]
+COL_WIDTHS  = [2.0, 1.0, 0.9, 1.2, 0.8, 1.0, 0.8, 0.6, 0.6, 0.6]
+COL_HEADERS = ["Job Name", "Team", "Cluster Type", "Cluster Size", "Runtime", "Schedule", "Threshold", "Notif.", "Access", "Path"]
 
+# ── pre-compute per-job check results (reused in stats + row render) ───────────
+_job_checks: dict[int, dict] = {}
+for _j in jobs:
+    _jname = (_j.settings.name or f"job-{_j.job_id}") if _j.settings else f"job-{_j.job_id}"
+    _jcreator = getattr(_j, "creator_user_name", None) or "unknown"
+    _jteams = match_team_rules(_jname, _jcreator, _teams_cfg)
+    _job_checks[_j.job_id] = {
+        "teams":        _jteams,
+        "is_scheduled": getattr(_j.settings, "schedule", None) is not None if _j.settings else False,
+        "notif":        _check_notification(_j, _jteams, _teams_by_name),
+        "access":       _check_access(_j, _jteams, _teams_by_name, _job_can_manage),
+        "path":         _check_notebooks_path(_j, _jteams, _teams_by_name),
+    }
 
 # ── statistics ─────────────────────────────────────────────────────────────────
 
@@ -288,16 +399,11 @@ scheduled = sum(
 )
 has_threshold = sum(
     1 for j in jobs
-    if extract_threshold_tooltip(j) is not None
+    if _job_checks[j.job_id]["is_scheduled"] and extract_threshold_tooltip(j) is not None
 )
-has_notifications = sum(
-    1 for j in jobs
-    if extract_notification_tooltip(j) is not None
-)
-has_access = sum(
-    1 for j in jobs
-    if getattr(j.settings, "access_control_list", None)
-)
+has_notifications = sum(1 for j in jobs if _job_checks[j.job_id]["notif"] == "ok")
+has_access        = sum(1 for j in jobs if _job_checks[j.job_id]["access"] == "ok")
+has_notebooks_path = sum(1 for j in jobs if _job_checks[j.job_id]["path"] == "ok")
 
 def pct(n: int) -> str:
     return f"{n}" if total else str(n)
@@ -313,34 +419,40 @@ def _stat(col, label: str, value, color: str = "inherit") -> None:
 
 _jc_color = "#ff4b4b" if job_cluster_count > 0 else "inherit"
 _stat(stat_cols[0], "Total Jobs",           total)
-stat_cols[1].markdown(
+stat_cols[1].empty()
+stat_cols[2].markdown(
     f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Job Cluster</div>"
     f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_jc_color}'>{pct(job_cluster_count)}</div>",
     unsafe_allow_html=True,
 )
-stat_cols[2].empty()
+stat_cols[3].empty()
 _rt_color = "#ff8c00" if old_runtime > 0 else "inherit"
-stat_cols[3].markdown(
+stat_cols[4].markdown(
     f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Old Runtime &lt;16.4</div>"
     f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_rt_color}'>{old_runtime}</div>",
     unsafe_allow_html=True,
 )
 no_scheduled = total - scheduled
 _sched_color = "#ff8c00" if no_scheduled > 0 else "inherit"
-stat_cols[4].markdown(
+stat_cols[5].markdown(
     f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Not Scheduled</div>"
     f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_sched_color}'>{no_scheduled}</div>",
     unsafe_allow_html=True,
 )
 
-no_threshold     = total - has_threshold
-no_notifications = total - has_notifications
-no_access        = total - has_access
+no_threshold      = sum(
+    1 for j in jobs
+    if _job_checks[j.job_id]["is_scheduled"] and extract_threshold_tooltip(j) is None
+)
+no_notifications  = sum(1 for j in jobs if _job_checks[j.job_id]["notif"]  == "fail")
+no_access         = sum(1 for j in jobs if _job_checks[j.job_id]["access"] == "fail")
+no_notebooks_path = sum(1 for j in jobs if _job_checks[j.job_id]["path"]   == "fail")
 
 for col, label, val in [
-    (stat_cols[5], "Threshold", no_threshold),
-    (stat_cols[6], "Notif.",    no_notifications),
-    (stat_cols[7], "Access",    no_access),
+    (stat_cols[6], "Threshold", no_threshold),
+    (stat_cols[7], "Notif.",    no_notifications),
+    (stat_cols[8], "Access",    no_access),
+    (stat_cols[9], "Path",      no_notebooks_path),
 ]:
     _stat(col, label, val, "#ff4b4b" if val > 0 else "inherit")
 
@@ -357,6 +469,10 @@ def _sort_key(job):
     ct, cs, sv = extract_cluster_info(job)
     if col == "Job Name":
         return ((job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}").lower()
+    if col == "Team":
+        _n = (job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}"
+        _c = getattr(job, "creator_user_name", None) or "unknown"
+        return ", ".join(match_team_rules(_n, _c, _teams_cfg))
     if col == "Cluster Type":   return ct
     if col == "Cluster Size":   return cs
     if col == "Runtime":
@@ -373,6 +489,7 @@ def _sort_key(job):
     if col == "Threshold":  return 0 if extract_threshold_tooltip(job) else 1
     if col == "Notif.":     return 0 if extract_notification_tooltip(job) else 1
     if col == "Access":     return 0 if extract_access_tooltip(job) else 1
+    if col == "Path":       return 0 if extract_notebooks_path_tooltip(job) else 1
     return ""
 
 if st.session_state.jobs_sort_col:
@@ -407,13 +524,28 @@ for job in jobs:
     cluster_type, cluster_size, spark_ver = extract_cluster_info(job)
     sched_label, cron_str               = extract_schedule_info(job)
 
-    thresh_html  = extract_threshold_tooltip(job)
-    notif_html   = extract_notification_tooltip(job)
-    access_html  = extract_access_tooltip(job)
+    _checks = _job_checks[job.job_id]
+    _matched_teams = _checks["teams"]
+    _team_display = ", ".join(_matched_teams) if _matched_teams else "<span style='color:orange;font-size:0.8em''>no team</span>"
 
-    thresh_cell  = make_tooltip("✅" if thresh_html  else "❌", thresh_html)
-    notif_cell   = make_tooltip("✅" if notif_html   else "❌", notif_html)
-    access_cell  = make_tooltip("✅" if access_html  else "❌", access_html)
+    thresh_html   = extract_threshold_tooltip(job)
+    notif_html    = extract_notification_tooltip(job)
+    access_html   = extract_access_tooltip(job)
+    nb_path_html  = extract_notebooks_path_tooltip(job)
+
+    if _checks["is_scheduled"]:
+        thresh_cell = make_tooltip("✓" if thresh_html else "❗", thresh_html)
+    else:
+        thresh_cell = make_tooltip("<span style='color:grey;font-size:0.8em'>—</span>", None)
+
+    def _cell(status, html):
+        if status == "no_team":
+            return make_tooltip("<span style='color:orange;font-size:0.8em''>no team</span>", html)
+        return make_tooltip("✓" if status == "ok" else "❗", html)
+
+    notif_cell   = _cell(_checks["notif"],  notif_html)
+    access_cell  = _cell(_checks["access"], access_html)
+    nb_path_cell = _cell(_checks["path"],   nb_path_html)
 
     if cron_str:
         sched_display = (
@@ -430,15 +562,17 @@ for job in jobs:
         f"{name}<br><span style='color:gray;font-size:0.75em'>ID: {job_id}</span>",
         unsafe_allow_html=True,
     )
-    if cluster_type == "Existing Cluster":
-        row[1].markdown("<div style='text-align:center'><span class='red-cell'>Existing Cluster</span></div>", unsafe_allow_html=True)
+    row[1].markdown(f"<div style='text-align:center'>{_team_display}</div>", unsafe_allow_html=True)
+    if cluster_type == "All-purpose":
+        row[2].markdown("<div style='text-align:center'><span class='red-cell'>All-purpose</span></div>", unsafe_allow_html=True)
     else:
-        row[1].markdown(f"<div style='text-align:center'>{cluster_type}</div>", unsafe_allow_html=True)
-    row[2].write(cluster_size)
+        row[2].markdown(f"<div style='text-align:center'>{cluster_type}</div>", unsafe_allow_html=True)
+    row[3].write(cluster_size)
     _sv_color = "#ff8c00" if _is_old_runtime(spark_ver) else "inherit"
-    row[3].markdown(f"<div style='text-align:center;color:{_sv_color}'>{spark_ver}</div>", unsafe_allow_html=True)
-    row[4].markdown(f"<div style='text-align:center'>{sched_display}</div>", unsafe_allow_html=True)
-    row[5].markdown(f"<div style='text-align:center'>{thresh_cell}</div>",  unsafe_allow_html=True)
-    row[6].markdown(f"<div style='text-align:center'>{notif_cell}</div>",   unsafe_allow_html=True)
-    row[7].markdown(f"<div style='text-align:center'>{access_cell}</div>",  unsafe_allow_html=True)
+    row[4].markdown(f"<div style='text-align:center;color:{_sv_color}'>{spark_ver}</div>", unsafe_allow_html=True)
+    row[5].markdown(f"<div style='text-align:center'>{sched_display}</div>", unsafe_allow_html=True)
+    row[6].markdown(f"<div style='text-align:center'>{thresh_cell}</div>",  unsafe_allow_html=True)
+    row[7].markdown(f"<div style='text-align:center'>{notif_cell}</div>",   unsafe_allow_html=True)
+    row[8].markdown(f"<div style='text-align:center'>{access_cell}</div>",   unsafe_allow_html=True)
+    row[9].markdown(f"<div style='text-align:center'>{nb_path_cell}</div>", unsafe_allow_html=True)
     st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid rgba(128,128,128,0.15);'>", unsafe_allow_html=True)
