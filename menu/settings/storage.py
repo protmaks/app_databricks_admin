@@ -14,6 +14,7 @@ _LOCAL_PATH = Path(__file__).parent.parent.parent / "settings_local.json"
 DEFAULT_SETTINGS: dict = {
     "version": 1,
     "timezone": "UTC",
+    "min_runtime_version": "16.4",
     "teams": [],
     "default_teams": [],
 }
@@ -22,6 +23,7 @@ DEFAULT_SETTINGS: dict = {
 def _migrate(data: dict) -> dict:
     """Backfill new fields added to settings without a version bump."""
     data.setdefault("default_teams", [])
+    data.setdefault("min_runtime_version", "16.4")
     return data
 
 

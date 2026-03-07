@@ -476,13 +476,21 @@ for j in jobs:
     type_counts[ct] = type_counts.get(ct, 0) + 1
     _spark_versions[j.job_id] = sv
 
+_min_runtime_str = (_settings.get("min_runtime_version") or "16.4").strip()
+try:
+    _min_rt_parts = _min_runtime_str.split(".")
+    _min_rt = (int(_min_rt_parts[0]), int(_min_rt_parts[1]) if len(_min_rt_parts) > 1 else 0)
+except (ValueError, IndexError):
+    _min_rt = (16, 4)
+
+
 def _is_old_runtime(sv: str) -> bool:
     if sv in ("—", ""):
         return False
     try:
         parts = sv.split(".")
         major, minor = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
-        return (major, minor) < (16, 4)
+        return (major, minor) < _min_rt
     except (ValueError, IndexError):
         return False
 
@@ -541,7 +549,7 @@ stat_cols[3].markdown(
 )
 _rt_color = "#ff8c00" if old_runtime > 0 else "inherit"
 stat_cols[4].markdown(
-    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Old Runtime &lt;16.4</div>"
+    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Old Runtime &lt;{_min_runtime_str}</div>"
     f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_rt_color}'>{old_runtime}</div>",
     unsafe_allow_html=True,
 )

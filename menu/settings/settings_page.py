@@ -20,6 +20,8 @@ if "settings_teams" not in st.session_state:
     st.session_state["settings_teams"] = [{**t} for t in _loaded["teams"]]
 if "settings_default_teams" not in st.session_state:
     st.session_state["settings_default_teams"] = list(_loaded.get("default_teams", []))
+if "settings_min_runtime" not in st.session_state:
+    st.session_state["settings_min_runtime"] = _loaded.get("min_runtime_version", "16.4")
 
 # ── Section 1: Timezone ──────────────────────────────────────────────────────
 tz_index = (
@@ -27,7 +29,7 @@ tz_index = (
     if st.session_state["settings_tz"] in COMMON_TZ
     else 0
 )
-_tz_label, _tz_col, _tz_desc = st.columns([0.05, 0.15, 0.8])
+_tz_label, _tz_col, _tz_desc = st.columns([0.05, 0.1, 0.85])
 _tz_label.markdown(
     "<div style='padding-top:8px'>Timezone:</div>",
     unsafe_allow_html=True,
@@ -40,6 +42,18 @@ _tz_col.selectbox(
     label_visibility="collapsed",
 )
 _tz_desc.caption("Applied as the default timezone on all pages. Can be overridden per page.")
+
+_rt_label, _rt_col, _rt_desc = st.columns([0.09, 0.05, 0.86])
+_rt_label.markdown(
+    "<div style='padding-top:8px'>Minimal Runtime:</div>",
+    unsafe_allow_html=True,
+)
+_rt_col.text_input(
+    "Minimal Runtime",
+    key="settings_min_runtime",
+    label_visibility="collapsed",
+)
+_rt_desc.caption("Minimum Databricks Runtime version required for jobs.")
 
 # ── Section 2: Teams ─────────────────────────────────────────────────────────
 st.subheader("Teams")
@@ -272,6 +286,7 @@ if col_save.button("Save Settings", type="primary", key="save_settings_btn"):
     settings_to_save = {
         "version": 1,
         "timezone": st.session_state["settings_tz"],
+        "min_runtime_version": st.session_state["settings_min_runtime"],
         "teams": st.session_state["settings_teams"],
         "default_teams": st.session_state["settings_default_teams"],
     }
