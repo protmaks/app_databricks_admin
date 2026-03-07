@@ -155,6 +155,26 @@ def _check_access(job, matched_teams: list[str], teams_by_name: dict, job_can_ma
     return "fail"
 
 
+def _check_run_as(job, matched_teams: list[str], teams_by_name: dict) -> str:
+    """Returns 'no_team', 'ok', or 'fail'."""
+    if not matched_teams:
+        return "no_team"
+    _run_as_obj = getattr(job.settings, "run_as", None) if job.settings else None
+    job_run_as = (
+        getattr(_run_as_obj, "user_name", None)
+        or getattr(_run_as_obj, "service_principal_name", None)
+        or getattr(job, "creator_user_name", None)
+        or ""
+    ).strip().lower()
+    for tname in matched_teams:
+        cfg = teams_by_name.get(tname, {})
+        allowed = [a.strip().lower() for a in (cfg.get("run_as") or "").split(",") if a.strip()]
+        if not allowed:
+            return "ok"
+        return "ok" if job_run_as in allowed else "fail"
+    return "fail"
+
+
 def _check_notification(job, matched_teams: list[str], teams_by_name: dict) -> str:
     """Returns 'no_team', 'ok', or 'fail'."""
     if not matched_teams:
@@ -358,7 +378,7 @@ with st.spinner("Fetching job permissions…"):
             _job_can_manage[_j.job_id] = set()
 
 COL_WIDTHS  = [2.0, 1.0, 0.9, 1.2, 0.8, 1.0, 0.8, 0.6, 0.6, 0.6]
-COL_HEADERS = ["Job Name", "Team", "Cluster Type", "Cluster Size", "Runtime", "Schedule", "Threshold", "Notif.", "Access", "Path"]
+COL_HEADERS = ["Job Name", "Team", "Cluster Type", "Run As", "Runtime", "Schedule", "Threshold", "Notif.", "Access", "Path"]
 
 # ── pre-compute per-job check results (reused in stats + row render) ───────────
 _job_checks: dict[int, dict] = {}
@@ -372,6 +392,7 @@ for _j in jobs:
         "notif":        _check_notification(_j, _jteams, _teams_by_name),
         "access":       _check_access(_j, _jteams, _teams_by_name, _job_can_manage),
         "path":         _check_notebooks_path(_j, _jteams, _teams_by_name),
+        "run_as":       _check_run_as(_j, _jteams, _teams_by_name),
     }
 
 # ── statistics ─────────────────────────────────────────────────────────────────
@@ -471,7 +492,7 @@ if "jobs_sort_col" not in st.session_state:
 
 def _sort_key(job):
     col = st.session_state.jobs_sort_col
-    ct, cs, sv = extract_cluster_info(job)
+    ct, _, sv = extract_cluster_info(job)
     if col == "Job Name":
         return ((job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}").lower()
     if col == "Team":
@@ -479,7 +500,9 @@ def _sort_key(job):
         _c = getattr(job, "creator_user_name", None) or "unknown"
         return ", ".join(match_team_rules(_n, _c, _teams_cfg))
     if col == "Cluster Type":   return ct
-    if col == "Cluster Size":   return cs
+    if col == "Run As":
+        _ra = getattr(job.settings, "run_as", None) if job.settings else None
+        return (getattr(_ra, "user_name", None) or getattr(_ra, "service_principal_name", None) or getattr(job, "creator_user_name", None) or "").lower()
     if col == "Runtime":
         if sv in ("—", ""):
             return (0, 0)
@@ -526,7 +549,14 @@ for job in jobs:
     )
     job_id = job.job_id
 
-    cluster_type, cluster_size, spark_ver = extract_cluster_info(job)
+    cluster_type, _, spark_ver = extract_cluster_info(job)
+    _run_as_obj = getattr(job.settings, "run_as", None) if job.settings else None
+    run_as = (
+        getattr(_run_as_obj, "user_name", None)
+        or getattr(_run_as_obj, "service_principal_name", None)
+        or getattr(job, "creator_user_name", None)
+        or "—"
+    )
     sched_label, cron_str               = extract_schedule_info(job)
 
     _checks = _job_checks[job.job_id]
@@ -572,7 +602,8 @@ for job in jobs:
         row[2].markdown("<div style='text-align:center'><span class='red-cell'>All-purpose</span></div>", unsafe_allow_html=True)
     else:
         row[2].markdown(f"<div style='text-align:center'>{cluster_type}</div>", unsafe_allow_html=True)
-    row[3].write(cluster_size)
+    _run_as_color = "#ff8c00" if _checks["run_as"] == "fail" else "inherit"
+    row[3].html(f"<span style='color:{_run_as_color}'>{run_as}</span>")
     _sv_color = "#ff8c00" if _is_old_runtime(spark_ver) else "inherit"
     row[4].markdown(f"<div style='text-align:center;color:{_sv_color}'>{spark_ver}</div>", unsafe_allow_html=True)
     row[5].markdown(f"<div style='text-align:center'>{sched_display}</div>", unsafe_allow_html=True)

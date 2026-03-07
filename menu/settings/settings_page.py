@@ -69,6 +69,7 @@ if _col_btn.button("＋ Add Team", key="add_team_btn"):
             "notification": "",
             "access": "",
             "notebooks_path": "",
+            "run_as": "",
         }
     )
     st.rerun()
@@ -228,6 +229,9 @@ for team_idx, team in enumerate(teams):
         def _on_notebooks_path_change(tidx=team_idx, tid=team_id):
             teams[tidx]["notebooks_path"] = st.session_state[f"team_notebooks_path_{tid}"]
 
+        def _on_run_as_change(tidx=team_idx, tid=team_id):
+            teams[tidx]["run_as"] = st.session_state[f"team_run_as_{tid}"]
+
         js_col1.text_input(
             "Notification",
             value=team.get("notification", ""),
@@ -248,6 +252,13 @@ for team_idx, team in enumerate(teams):
             key=f"team_notebooks_path_{team_id}",
             placeholder="e.g. /Shared/team/notebooks",
             on_change=_on_notebooks_path_change,
+        )
+        st.text_input(
+            "Run As accounts",
+            value=team.get("run_as", ""),
+            key=f"team_run_as_{team_id}",
+            placeholder="e.g. user1@example.com, svc_principal_name",
+            on_change=_on_run_as_change,
         )
 
 # ── Save ─────────────────────────────────────────────────────────────────────
