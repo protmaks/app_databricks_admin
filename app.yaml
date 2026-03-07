@@ -12,4 +12,7 @@ env:
 
 oauth:
   scopes:
-    - name: all-apis
+    - name: clusters
+    - name: jobs
+    - name: sql
+    - name: pipelines
