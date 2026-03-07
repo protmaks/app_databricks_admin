@@ -19,6 +19,7 @@ st.logo(
 menu = {
     "Help": [
         st.Page("menu/description.py", title="APP Description", icon=":material/description:",),
+        st.Page("menu/debug_oauth.py", title="OAuth Debug", icon=":material/bug_report:",),
     ],
     "Compute": [
         st.Page("menu/compute/compute.py", title="Active Compute", icon=":material/description:",),
