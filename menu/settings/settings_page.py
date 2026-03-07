@@ -206,6 +206,7 @@ for team_idx, team in enumerate(teams):
             )
             if ccol_del.button("✕", key=f"del_cond_{cond_key}"):
                 conditions.pop(cond_idx)
+                st.session_state[expanded_key] = True
                 st.rerun()
 
         if st.button("＋ Add Condition", key=f"add_cond_{team_id}"):
@@ -213,6 +214,7 @@ for team_idx, team in enumerate(teams):
             if conditions:  # not the first condition — add default logic connector
                 new_cond["logic"] = "AND"
             conditions.append(new_cond)
+            st.session_state[expanded_key] = True
             st.rerun()
 
         # ── Jobs Settings ─────────────────────────────────────────────────────

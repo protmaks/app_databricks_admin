@@ -84,7 +84,7 @@ def _format_spark_version(spec) -> str:
     return sv.split("-")[0] if sv != "—" else "—"
 
 
-def extract_cluster_info(job) -> tuple[str, str, str]:
+def extract_cluster_info(job, cluster_cache: dict | None = None) -> tuple[str, str, str]:
     settings = job.settings
     if settings is None:
         return "Serverless", "—", "—"
@@ -106,6 +106,10 @@ def extract_cluster_info(job) -> tuple[str, str, str]:
             spec = job_clusters_map.get(task.job_cluster_key)
             return "Job Cluster", _format_cluster_size(spec), _format_spark_version(spec)
         if getattr(task, "existing_cluster_id", None):
+            cid = task.existing_cluster_id
+            spec = (cluster_cache or {}).get(cid)
+            if spec is not None:
+                return "All-purpose", _format_cluster_size(spec), _format_spark_version(spec)
             return "All-purpose", "—", "—"
 
     return "Serverless", "—", "—"
@@ -118,7 +122,8 @@ def extract_schedule_info(job) -> tuple[str, str]:
     quartz = getattr(sched, "quartz_cron_expression", None) or ""
     pause = getattr(sched, "pause_status", None)
     cron5 = quartz_to_standard_cron(quartz) if quartz else ""
-    paused = pause is not None and str(pause).upper() == "PAUSED"
+    pause_str = (pause.value if hasattr(pause, "value") else str(pause)) if pause is not None else ""
+    paused = pause_str.split(".")[-1].upper() == "PAUSED"
     label = "Scheduled (paused)" if paused else "Scheduled"
     return label, cron5 or quartz
 
@@ -377,6 +382,24 @@ with st.spinner("Fetching job permissions…"):
         except Exception:
             _job_can_manage[_j.job_id] = set()
 
+# ── all-purpose cluster pre-fetch ──────────────────────────────────────────────
+_existing_cluster_ids: set[str] = set()
+for _j in jobs:
+    if _j.settings:
+        for _t in (_j.settings.tasks or []):
+            _cid = getattr(_t, "existing_cluster_id", None)
+            if _cid:
+                _existing_cluster_ids.add(_cid)
+
+_cluster_cache: dict[str, object] = {}
+if _existing_cluster_ids:
+    with st.spinner("Fetching cluster details…"):
+        for _cid in _existing_cluster_ids:
+            try:
+                _cluster_cache[_cid] = w.clusters.get(_cid)
+            except Exception:
+                pass
+
 COL_WIDTHS  = [2.0, 1.0, 0.9, 1.2, 0.8, 1.0, 0.8, 0.6, 0.6, 0.6]
 COL_HEADERS = ["Job Name", "Team", "Cluster Type", "Run As", "Runtime", "Schedule", "Threshold", "Notif.", "Access", "Path"]
 
@@ -402,7 +425,7 @@ total = len(jobs)
 type_counts: dict[str, int] = {}
 _spark_versions: dict[int, str] = {}
 for j in jobs:
-    ct, _, sv = extract_cluster_info(j)
+    ct, _, sv = extract_cluster_info(j, _cluster_cache)
     type_counts[ct] = type_counts.get(ct, 0) + 1
     _spark_versions[j.job_id] = sv
 
@@ -417,11 +440,20 @@ def _is_old_runtime(sv: str) -> bool:
         return False
 
 old_runtime = sum(1 for sv in _spark_versions.values() if _is_old_runtime(sv))
-job_cluster_count = type_counts.get("Job Cluster", 0)
+_ALLOWED_CLUSTER_TYPES = {"Job Cluster", "Serverless"}
+job_cluster_count = sum(v for ct, v in type_counts.items() if ct not in _ALLOWED_CLUSTER_TYPES)
+def _is_paused_schedule(j) -> bool:
+    sched = getattr(j.settings, "schedule", None) if j.settings else None
+    if not sched:
+        return False
+    ps = getattr(sched, "pause_status", None)
+    ps_str = (ps.value if hasattr(ps, "value") else str(ps)) if ps is not None else ""
+    return ps_str.split(".")[-1].upper() == "PAUSED"
+
 scheduled = sum(
     1 for j in jobs
     if getattr(j.settings, "schedule", None) is not None
-    and str(getattr(j.settings.schedule, "pause_status", "")).upper() != "PAUSED"
+    and not _is_paused_schedule(j)
 )
 has_threshold = sum(
     1 for j in jobs
@@ -430,6 +462,8 @@ has_threshold = sum(
 has_notifications = sum(1 for j in jobs if _job_checks[j.job_id]["notif"] == "ok")
 has_access        = sum(1 for j in jobs if _job_checks[j.job_id]["access"] == "ok")
 has_notebooks_path = sum(1 for j in jobs if _job_checks[j.job_id]["path"] == "ok")
+no_run_as         = sum(1 for j in jobs if _job_checks[j.job_id]["run_as"] == "fail")
+no_team           = sum(1 for j in jobs if len(_job_checks[j.job_id]["teams"]) != 1)
 
 def pct(n: int) -> str:
     return f"{n}" if total else str(n)
@@ -444,14 +478,20 @@ def _stat(col, label: str, value, color: str = "inherit") -> None:
     )
 
 _jc_color = "#ff4b4b" if job_cluster_count > 0 else "inherit"
-_stat(stat_cols[0], "Total Jobs",           total)
-stat_cols[1].empty()
+_stat(stat_cols[0], "Total Jobs", total)
+_no_team_color = "#ff8c00" if no_team > 0 else "inherit"
+_stat(stat_cols[1], "No/Multi Team", no_team, _no_team_color)
 stat_cols[2].markdown(
-    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Job Cluster</div>"
+    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Wrong Cluster</div>"
     f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_jc_color}'>{pct(job_cluster_count)}</div>",
     unsafe_allow_html=True,
 )
-stat_cols[3].empty()
+_run_as_stat_color = "#ff8c00" if no_run_as > 0 else "inherit"
+stat_cols[3].markdown(
+    f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Wrong Run As</div>"
+    f"<div style='text-align:center;font-size:1.6em;font-weight:600;color:{_run_as_stat_color}'>{no_run_as}</div>",
+    unsafe_allow_html=True,
+)
 _rt_color = "#ff8c00" if old_runtime > 0 else "inherit"
 stat_cols[4].markdown(
     f"<div style='text-align:center;font-size:0.8em;color:rgba(250,250,250,0.6);margin-bottom:2px'>Old Runtime &lt;16.4</div>"
@@ -470,9 +510,9 @@ no_threshold      = sum(
     1 for j in jobs
     if _job_checks[j.job_id]["is_scheduled"] and extract_threshold_tooltip(j) is None
 )
-no_notifications  = sum(1 for j in jobs if _job_checks[j.job_id]["notif"]  == "fail")
-no_access         = sum(1 for j in jobs if _job_checks[j.job_id]["access"] == "fail")
-no_notebooks_path = sum(1 for j in jobs if _job_checks[j.job_id]["path"]   == "fail")
+no_notifications  = sum(1 for j in jobs if _job_checks[j.job_id]["notif"]   == "fail" and len(_job_checks[j.job_id]["teams"]) <= 1)
+no_access         = sum(1 for j in jobs if _job_checks[j.job_id]["access"]  == "fail" and len(_job_checks[j.job_id]["teams"]) <= 1)
+no_notebooks_path = sum(1 for j in jobs if _job_checks[j.job_id]["path"]    == "fail" and len(_job_checks[j.job_id]["teams"]) <= 1)
 
 for col, label, val in [
     (stat_cols[6], "Threshold", no_threshold),
@@ -492,7 +532,7 @@ if "jobs_sort_col" not in st.session_state:
 
 def _sort_key(job):
     col = st.session_state.jobs_sort_col
-    ct, _, sv = extract_cluster_info(job)
+    ct, _, sv = extract_cluster_info(job, _cluster_cache)
     if col == "Job Name":
         return ((job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}").lower()
     if col == "Team":
@@ -549,7 +589,7 @@ for job in jobs:
     )
     job_id = job.job_id
 
-    cluster_type, _, spark_ver = extract_cluster_info(job)
+    cluster_type, _, spark_ver = extract_cluster_info(job, _cluster_cache)
     _run_as_obj = getattr(job.settings, "run_as", None) if job.settings else None
     run_as = (
         getattr(_run_as_obj, "user_name", None)
@@ -561,7 +601,12 @@ for job in jobs:
 
     _checks = _job_checks[job.job_id]
     _matched_teams = _checks["teams"]
-    _team_display = ", ".join(_matched_teams) if _matched_teams else "<span style='color:orange;font-size:0.8em''>no team</span>"
+    if not _matched_teams:
+        _team_display = "<span style='color:orange;font-size:0.8em'>no team</span>"
+    elif len(_matched_teams) > 1:
+        _team_display = f"<span style='color:orange'>{', '.join(_matched_teams)}</span>"
+    else:
+        _team_display = _matched_teams[0]
 
     thresh_html   = extract_threshold_tooltip(job)
     notif_html    = extract_notification_tooltip(job)
@@ -578,17 +623,25 @@ for job in jobs:
             return make_tooltip("<span style='color:orange;font-size:0.8em''>no team</span>", html)
         return make_tooltip("✓" if status == "ok" else "❗", html)
 
-    notif_cell   = _cell(_checks["notif"],  notif_html)
-    access_cell  = _cell(_checks["access"], access_html)
-    nb_path_cell = _cell(_checks["path"],   nb_path_html)
+    _multi_team_cell = "<span style='color:orange;font-size:0.8em'>more 1 team</span>"
+    if len(_matched_teams) > 1:
+        notif_cell   = _multi_team_cell
+        access_cell  = _multi_team_cell
+        nb_path_cell = _multi_team_cell
+    else:
+        notif_cell   = _cell(_checks["notif"],  notif_html)
+        access_cell  = _cell(_checks["access"], access_html)
+        nb_path_cell = _cell(_checks["path"],   nb_path_html)
 
+    _is_paused = "paused" in sched_label.lower()
     if cron_str:
+        _label_html = f"<span style='color:#ff8c00'>{sched_label}</span>" if _is_paused else sched_label
         sched_display = (
-            f"{sched_label}<br>"
+            f"{_label_html}<br>"
             f"<span style='color:gray;font-size:0.82em'>{cron_str}</span>"
         )
     elif sched_label == "Not scheduled":
-        sched_display = "<span style='color:#ff8c00'>Not scheduled</span>"
+        sched_display = "<span style='color:red'>Not scheduled</span>"
     else:
         sched_display = sched_label
 
