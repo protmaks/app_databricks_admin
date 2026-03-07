@@ -58,14 +58,16 @@ _rt_desc.caption("Minimum Databricks Runtime version required for jobs.")
 # ── Section 2: Teams ─────────────────────────────────────────────────────────
 st.subheader("Teams")
 
-FIELD_OPTIONS = ["job_name", "creator"]
-FIELD_LABELS = {"job_name": "Job Name", "creator": "Creator"}
+FIELD_OPTIONS = ["job_name", "creator", "tags"]
+FIELD_LABELS = {"job_name": "Job Name", "creator": "Creator", "tags": "Tags"}
 OP_OPTIONS = ["starts_with", "ends_with", "contains", "equals"]
+OP_OPTIONS_TAGS = ["has_key", "equals", "contains", "starts_with", "ends_with"]
 OP_LABELS = {
     "starts_with": "starts with",
     "ends_with": "ends with",
     "contains": "contains",
     "equals": "equals",
+    "has_key": "has key",
 }
 LOGIC_OPTIONS = ["AND", "OR"]
 
@@ -155,9 +157,16 @@ for team_idx, team in enumerate(teams):
 
         for cond_idx, cond in enumerate(conditions):
             cond_key = f"{team_id}_{cond_idx}"
-            ccol_logic, ccol_field, ccol_op, ccol_val, ccol_del = st.columns(
-                [0.07, 0.15, 0.1, 0.61, 0.07]
-            )
+            _is_tags = cond.get("field") == "tags"
+
+            if _is_tags:
+                ccol_logic, ccol_field, ccol_tag_key, ccol_op, ccol_val, ccol_del = st.columns(
+                    [0.07, 0.13, 0.23, 0.1, 0.4, 0.07]
+                )
+            else:
+                ccol_logic, ccol_field, ccol_op, ccol_val, ccol_del = st.columns(
+                    [0.07, 0.15, 0.1, 0.61, 0.07]
+                )
 
             # Logic column: "IF" label for first row, AND/OR selector for the rest
             if cond_idx == 0:
@@ -182,13 +191,22 @@ for team_idx, team in enumerate(teams):
                 )
 
             def _on_field_change(tidx=team_idx, cidx=cond_idx, ck=cond_key):
-                teams[tidx]["conditions"][cidx]["field"] = st.session_state[f"cond_field_{ck}"]
+                f = st.session_state[f"cond_field_{ck}"]
+                teams[tidx]["conditions"][cidx]["field"] = f
+                # reset operator when switching to/from tags
+                if f == "tags" and teams[tidx]["conditions"][cidx].get("operator") not in OP_OPTIONS_TAGS:
+                    teams[tidx]["conditions"][cidx]["operator"] = "has_key"
+                elif f != "tags" and teams[tidx]["conditions"][cidx].get("operator") not in OP_OPTIONS:
+                    teams[tidx]["conditions"][cidx]["operator"] = "starts_with"
 
             def _on_op_change(tidx=team_idx, cidx=cond_idx, ck=cond_key):
                 teams[tidx]["conditions"][cidx]["operator"] = st.session_state[f"cond_op_{ck}"]
 
             def _on_val_change(tidx=team_idx, cidx=cond_idx, ck=cond_key):
                 teams[tidx]["conditions"][cidx]["value"] = st.session_state[f"cond_val_{ck}"].strip()
+
+            def _on_tag_key_change(tidx=team_idx, cidx=cond_idx, ck=cond_key):
+                teams[tidx]["conditions"][cidx]["tag_key"] = st.session_state[f"cond_tag_key_{ck}"].strip()
 
             ccol_field.selectbox(
                 "Field",
@@ -199,23 +217,43 @@ for team_idx, team in enumerate(teams):
                 label_visibility="collapsed",
                 on_change=_on_field_change,
             )
+
+            if _is_tags:
+                ccol_tag_key.text_input(
+                    "Tag Key",
+                    value=cond.get("tag_key", ""),
+                    key=f"cond_tag_key_{cond_key}",
+                    label_visibility="collapsed",
+                    placeholder="tag key",
+                    on_change=_on_tag_key_change,
+                )
+                _cur_op = cond.get("operator", "has_key")
+                _op_opts = OP_OPTIONS_TAGS
+            else:
+                _cur_op = cond.get("operator", "starts_with")
+                _op_opts = OP_OPTIONS
+
             ccol_op.selectbox(
                 "Operator",
-                options=OP_OPTIONS,
+                options=_op_opts,
                 format_func=lambda x: OP_LABELS[x],
-                index=OP_OPTIONS.index(cond.get("operator", "starts_with")),
+                index=_op_opts.index(_cur_op) if _cur_op in _op_opts else 0,
                 key=f"cond_op_{cond_key}",
                 label_visibility="collapsed",
                 on_change=_on_op_change,
             )
-            ccol_val.text_input(
-                "Value",
-                value=cond.get("value", ""),
-                key=f"cond_val_{cond_key}",
-                label_visibility="collapsed",
-                placeholder="e.g. alpha_",
-                on_change=_on_val_change,
-            )
+
+            _show_val = not (_is_tags and cond.get("operator", "has_key") == "has_key")
+            if _show_val:
+                ccol_val.text_input(
+                    "Value",
+                    value=cond.get("value", ""),
+                    key=f"cond_val_{cond_key}",
+                    label_visibility="collapsed",
+                    placeholder="tag value" if _is_tags else "e.g. alpha_",
+                    on_change=_on_val_change,
+                )
+
             if ccol_del.button("✕", key=f"del_cond_{cond_key}"):
                 conditions.pop(cond_idx)
                 st.session_state[expanded_key] = True

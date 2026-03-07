@@ -1,4 +1,5 @@
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from databricks.sdk import WorkspaceClient
 
 from menu.compute.utils import quartz_to_standard_cron, make_workspace_client, match_team_rules
@@ -207,17 +208,11 @@ def _check_access(job, matched_teams: list[str], teams_by_name: dict, job_can_ma
     return "fail"
 
 
-def _check_run_as(job, matched_teams: list[str], teams_by_name: dict) -> str:
+def _check_run_as(job, matched_teams: list[str], teams_by_name: dict, run_as_value: str | None = None) -> str:
     """Returns 'no_team', 'ok', or 'fail'."""
     if not matched_teams:
         return "no_team"
-    _run_as_obj = getattr(job.settings, "run_as", None) if job.settings else None
-    job_run_as = (
-        getattr(_run_as_obj, "user_name", None)
-        or getattr(_run_as_obj, "service_principal_name", None)
-        or getattr(job, "creator_user_name", None)
-        or ""
-    ).strip().lower()
+    job_run_as = (run_as_value or getattr(job, "creator_user_name", None) or "").strip().lower()
     for tname in matched_teams:
         cfg = teams_by_name.get(tname, {})
         allowed = [a.strip().lower() for a in (cfg.get("run_as") or "").split(",") if a.strip()]
@@ -336,6 +331,19 @@ with st.spinner("Fetching jobs…"):
         st.error(f"Failed to fetch jobs: {e}")
         st.stop()
 
+    def _fetch_run_as(job_id: int) -> tuple[int, str | None]:
+        try:
+            return job_id, w.jobs.get(job_id=job_id).run_as_user_name
+        except Exception:
+            return job_id, None
+
+    with ThreadPoolExecutor(max_workers=20) as _pool:
+        _run_as_map: dict[int, str | None] = dict(
+            f.result() for f in as_completed(
+                _pool.submit(_fetch_run_as, j.job_id) for j in jobs if j.job_id
+            )
+        )
+
 if not jobs:
     st.info("No jobs found.")
     st.stop()
@@ -394,8 +402,9 @@ if selected_teams:
             m in selected_teams
             for m in match_team_rules(
                 (j.settings.name or f"job-{j.job_id}") if j.settings else f"job-{j.job_id}",
-                getattr(j, "creator_user_name", None) or "unknown",
+                _run_as_map.get(j.job_id) or getattr(j, "creator_user_name", None) or "unknown",
                 _teams_cfg,
+                tags=j.settings.tags if j.settings else {},
             )
         )
     ]
@@ -454,15 +463,15 @@ COL_HEADERS = ["Job Name", "Team", "Cluster Type", "Run As", "Runtime", "Schedul
 _job_checks: dict[int, dict] = {}
 for _j in jobs:
     _jname = (_j.settings.name or f"job-{_j.job_id}") if _j.settings else f"job-{_j.job_id}"
-    _jcreator = getattr(_j, "creator_user_name", None) or "unknown"
-    _jteams = match_team_rules(_jname, _jcreator, _teams_cfg)
+    _jcreator = _run_as_map.get(_j.job_id) or getattr(_j, "creator_user_name", None) or "unknown"
+    _jteams = match_team_rules(_jname, _jcreator, _teams_cfg, tags=_j.settings.tags if _j.settings else {})
     _job_checks[_j.job_id] = {
         "teams":        _jteams,
         "is_scheduled": getattr(_j.settings, "schedule", None) is not None if _j.settings else False,
         "notif":        _check_notification(_j, _jteams, _teams_by_name),
         "access":       _check_access(_j, _jteams, _teams_by_name, _job_can_manage),
         "path":         _check_notebooks_path(_j, _jteams, _teams_by_name),
-        "run_as":       _check_run_as(_j, _jteams, _teams_by_name),
+        "run_as":       _check_run_as(_j, _jteams, _teams_by_name, run_as_value=_run_as_map.get(_j.job_id)),
     }
 
 # ── statistics ─────────────────────────────────────────────────────────────────
@@ -592,12 +601,11 @@ def _sort_key(job):
         return ((job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}").lower()
     if col == "Team":
         _n = (job.settings.name or f"job-{job.job_id}") if job.settings else f"job-{job.job_id}"
-        _c = getattr(job, "creator_user_name", None) or "unknown"
-        return ", ".join(match_team_rules(_n, _c, _teams_cfg))
+        _c = _run_as_map.get(job.job_id) or getattr(job, "creator_user_name", None) or "unknown"
+        return ", ".join(match_team_rules(_n, _c, _teams_cfg, tags=job.settings.tags if job.settings else {}))
     if col == "Cluster Type":   return ct
     if col == "Run As":
-        _ra = getattr(job.settings, "run_as", None) if job.settings else None
-        return (getattr(_ra, "user_name", None) or getattr(_ra, "service_principal_name", None) or getattr(job, "creator_user_name", None) or "").lower()
+        return (_run_as_map.get(job.job_id) or getattr(job, "creator_user_name", None) or "").lower()
     if col == "Runtime":
         if sv in ("—", ""):
             return (0, 0)
@@ -645,13 +653,7 @@ for job in jobs:
     job_id = job.job_id
 
     cluster_type, _, spark_ver = extract_cluster_info(job, _cluster_cache)
-    _run_as_obj = getattr(job.settings, "run_as", None) if job.settings else None
-    run_as = (
-        getattr(_run_as_obj, "user_name", None)
-        or getattr(_run_as_obj, "service_principal_name", None)
-        or getattr(job, "creator_user_name", None)
-        or "—"
-    )
+    run_as = _run_as_map.get(job_id) or "—"
     sched_label, cron_str, sched_tz = extract_schedule_info(job)
 
     _checks = _job_checks[job.job_id]

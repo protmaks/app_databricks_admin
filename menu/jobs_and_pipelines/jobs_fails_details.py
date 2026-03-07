@@ -113,6 +113,7 @@ if selected_teams:
                 j.settings.name or f"job-{j.job_id}" if j.settings else f"job-{j.job_id}",
                 getattr(j, "creator_user_name", None) or "unknown",
                 _teams_cfg,
+                tags=j.settings.tags if j.settings else {},
             )
         )
     }

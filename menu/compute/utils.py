@@ -151,14 +151,15 @@ def format_uptime(total_seconds):
     return f"{days}d {hours}h {mins}m"
 
 
-def match_team_rules(job_name: str, creator: str, teams_config: list) -> list[str]:
-    """Return list of team names whose rules match the given job_name / creator.
+def match_team_rules(job_name: str, creator: str, teams_config: list, tags: dict | None = None) -> list[str]:
+    """Return list of team names whose rules match the given job_name / creator / tags.
 
     Conditions are evaluated left-to-right. Each condition (from the second onwards)
     carries its own 'logic' key ("AND" or "OR") that connects it to the accumulated
     result. The team-level 'logic' field is used as fallback for conditions that lack
     their own key (backward compatibility).
     """
+    job_tags = tags or {}
     matched = []
     for team in teams_config:
         conditions = team.get("conditions", [])
@@ -167,10 +168,19 @@ def match_team_rules(job_name: str, creator: str, teams_config: list) -> list[st
             continue
 
         def _eval(cond):
-            subject = job_name if cond.get("field") == "job_name" else creator
-            val = cond.get("value", "")
+            field = cond.get("field")
             op = cond.get("operator", "")
-            s, v = subject.lower(), val.lower()
+            if field == "tags":
+                tag_key = cond.get("tag_key", "")
+                if op == "has_key":
+                    return tag_key.lower() in {k.lower() for k in job_tags}
+                tag_val = next((v for k, v in job_tags.items() if k.lower() == tag_key.lower()), None)
+                if tag_val is None:
+                    return False
+                s, v = tag_val.lower(), cond.get("value", "").lower()
+            else:
+                subject = job_name if field == "job_name" else creator
+                s, v = subject.lower(), cond.get("value", "").lower()
             if op == "starts_with":
                 return s.startswith(v)
             elif op == "ends_with":
