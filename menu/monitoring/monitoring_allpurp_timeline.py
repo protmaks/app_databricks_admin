@@ -21,9 +21,12 @@ if "timeline_date" not in st.session_state:
 if _pending is not None:
     st.session_state["timeline_date"] = _pending
 selected_date = col_date.date_input("Date", key="timeline_date")
+_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
-    "Timezone", options=COMMON_TZ, index=0, key="timeline_tz"
+    "Timezone", options=COMMON_TZ, index=_tz_index, key="timeline_tz"
 )
+st.query_params["tz"] = selected_tz
 col_teams.multiselect(
     "Teams", options=[], default=[], disabled=True, help="Coming soon"
 )

@@ -15,10 +15,19 @@ from menu.compute.utils import run_uses_cluster, resolve_display_state, make_wor
 st.header("Cluster Jobs")
 
 col_date, col_tz, col_cluster = st.columns([0.15, 0.10, 0.75])
-selected_date = col_date.date_input("Date", value=dt.date.today())
+_date_from_url = st.query_params.get("date", None)
+try:
+    _date_default = dt.date.fromisoformat(_date_from_url) if _date_from_url else dt.date.today()
+except ValueError:
+    _date_default = dt.date.today()
+selected_date = col_date.date_input("Date", value=_date_default)
+_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
-    "Timezone", options=COMMON_TZ, index=0, key="cluster_jobs_tz"
+    "Timezone", options=COMMON_TZ, index=_tz_index, key="cluster_jobs_tz"
 )
+st.query_params["tz"] = selected_tz
+st.query_params["date"] = selected_date.isoformat()
 tz = pytz.timezone(selected_tz)
 
 w = make_workspace_client()
@@ -35,9 +44,13 @@ if not clusters:
     st.stop()
 
 cluster_map = {c.cluster_name: c for c in clusters}
+_cluster_options = sorted(cluster_map.keys())
+_cluster_from_url = st.query_params.get("cluster", _cluster_options[0])
+_cluster_index = _cluster_options.index(_cluster_from_url) if _cluster_from_url in _cluster_options else 0
 selected_name = col_cluster.selectbox(
-    "Cluster", options=sorted(cluster_map.keys()), key="cluster_jobs_cluster"
+    "Cluster", options=_cluster_options, index=_cluster_index, key="cluster_jobs_cluster"
 )
+st.query_params["cluster"] = selected_name
 selected_cluster = cluster_map[selected_name]
 
 # Day boundaries in epoch ms (in selected timezone)
