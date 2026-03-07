@@ -11,9 +11,12 @@ st.header("Jobs Execution Timeline")
 
 col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 selected_date = col_date.date_input("Date", value=dt.date.today())
+_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
-    "Timezone", options=COMMON_TZ, index=0, key="jobs_timeline_tz"
+    "Timezone", options=COMMON_TZ, index=_tz_index, key="jobs_timeline_tz"
 )
+st.query_params["tz"] = selected_tz
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 tz = pytz.timezone(selected_tz)
 

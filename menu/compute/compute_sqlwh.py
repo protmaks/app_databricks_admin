@@ -123,7 +123,15 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
     st.divider()
 
     for i, wh in enumerate(warehouses):
-        auto_stop = f"{wh.auto_stop_mins} min" if wh.auto_stop_mins and wh.auto_stop_mins > 0 else "Disabled"
+        _as_min = wh.auto_stop_mins or 0
+        if _as_min <= 0:
+            auto_stop = "<span style='color:#EF5350;font-weight:600'>Disabled</span>"
+        elif _as_min > 30:
+            auto_stop = f"<span style='color:#EF5350;font-weight:600'>{_as_min} min</span>"
+        elif _as_min > 10:
+            auto_stop = f"<span style='color:#FF9800;font-weight:600'>{_as_min} min</span>"
+        else:
+            auto_stop = f"{_as_min} min"
         indicator = STATE_COLORS.get(wh.state, "⚪")
         current_val = wh.auto_stop_mins or 0
         min_max = f"{wh.min_num_clusters or '-'} / {wh.max_num_clusters or '-'}"
@@ -162,7 +170,7 @@ def render(w, warehouses, all_clusters, tz, selected_tz, key_prefix="wh"):
             row_cols[3].write(wh.cluster_size or "—")
             row_cols[4].write(min_max)
             row_cols[5].write(dbu_str)
-            row_cols[6].write(auto_stop)
+            row_cols[6].markdown(auto_stop, unsafe_allow_html=True)
             new_val = row_cols[7].number_input(
                 "min",
                 min_value=0,

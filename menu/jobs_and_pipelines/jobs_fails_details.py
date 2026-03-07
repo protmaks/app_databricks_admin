@@ -10,9 +10,15 @@ from menu.compute.utils import make_workspace_client, COMMON_TZ
 st.header("Job Fails Details")
 
 col_tz, col_days, col_teams = st.columns([0.12, 0.63, 0.25])
-selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=0, key="fails_tz")
-lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=30)
+_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=_tz_index, key="fails_tz")
+_days_from_url = int(st.query_params.get("days", 30))
+_days_default = max(1, min(60, _days_from_url))
+lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=_days_default)
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+st.query_params["tz"] = selected_tz
+st.query_params["days"] = str(lookback_days)
 
 tz = pytz.timezone(selected_tz)
 now_local = dt.datetime.now(tz)
@@ -154,9 +160,13 @@ st.subheader("Jobs whose last run of the day failed")
 
 col_search, col_status = st.columns([0.7, 0.3])
 search = col_search.text_input("Filter by job name", placeholder="type to filter…")
+_status_options = ["FAILED", "TIMEDOUT"]
+_status_from_url = st.query_params.get("status", "FAILED,TIMEDOUT").split(",")
+_status_default = [s for s in _status_from_url if s in _status_options] or _status_options
 status_filter = col_status.multiselect(
-    "Status", options=["FAILED", "TIMEDOUT"], default=["FAILED", "TIMEDOUT"]
+    "Status", options=_status_options, default=_status_default
 )
+st.query_params["status"] = ",".join(status_filter) if status_filter else ""
 
 df_view = df.copy()
 if search:

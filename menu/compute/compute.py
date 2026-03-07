@@ -8,7 +8,10 @@ from databricks.sdk.service.database import DatabaseInstanceState
 
 st.header("Active Compute")
 
-selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=0, key="compute_tz")
+_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=_tz_index, key="compute_tz")
+st.query_params["tz"] = selected_tz
 tz = pytz.timezone(selected_tz)
 
 w = make_workspace_client()

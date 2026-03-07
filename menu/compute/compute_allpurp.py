@@ -110,7 +110,15 @@ def render(w, clusters, tz, selected_tz, key_prefix="allpurp"):
             min_dbu, max_dbu = estimate_dbu(driver_type, worker_type, num_w, num_w, node_types)
         dbu_str = f"{int(min_dbu)} - {int(max_dbu)}" if min_dbu != max_dbu else f"{int(min_dbu)}"
 
-        auto_term = f"{c.autotermination_minutes} min" if c.autotermination_minutes and c.autotermination_minutes > 0 else "Disabled"
+        _at_min = c.autotermination_minutes or 0
+        if _at_min <= 0:
+            auto_term = "<span style='color:#EF5350;font-weight:600'>Disabled</span>"
+        elif _at_min > 30:
+            auto_term = f"<span style='color:#EF5350;font-weight:600'>{_at_min} min</span>"
+        elif _at_min > 10:
+            auto_term = f"<span style='color:#FF9800;font-weight:600'>{_at_min} min</span>"
+        else:
+            auto_term = f"{_at_min} min"
 
         if c.state == State.RUNNING and c.last_state_loss_time:
             start_utc = dt.datetime.fromtimestamp(c.last_state_loss_time / 1000, tz=pytz.utc)
@@ -140,7 +148,7 @@ def render(w, clusters, tz, selected_tz, key_prefix="allpurp"):
             row_cols[2].write(c.creator_user_name or "—")
             row_cols[3].write(workers)
             row_cols[4].write(dbu_str)
-            row_cols[5].write(auto_term)
+            row_cols[5].markdown(auto_term, unsafe_allow_html=True)
             new_val = row_cols[6].number_input("min", min_value=0, max_value=1440, value=current_val, step=10, key=f"{key_prefix}_at_{i}", label_visibility="collapsed")
             submitted = row_cols[7].form_submit_button("Apply")
             row_cols[8].write(start_str)

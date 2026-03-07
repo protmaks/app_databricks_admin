@@ -9,11 +9,33 @@ from menu.compute.utils import make_workspace_client, COMMON_TZ
 
 st.header("Job Runs History")
 
+# Restore filter state from URL query params on first load
+if "last_run_tz" not in st.session_state:
+    _qp_tz = st.query_params.get("tz", "")
+    st.session_state["last_run_tz"] = _qp_tz if _qp_tz in COMMON_TZ else COMMON_TZ[0]
+
+if "last_run_days" not in st.session_state:
+    try:
+        st.session_state["last_run_days"] = max(1, min(60, int(st.query_params.get("days", "30"))))
+    except (ValueError, TypeError):
+        st.session_state["last_run_days"] = 30
+
+def _on_tz_change():
+    st.query_params["tz"] = st.session_state["last_run_tz"]
+
+def _on_days_change():
+    st.query_params["days"] = str(st.session_state["last_run_days"])
+
 col_tz, col_days, col_teams = st.columns([0.12, 0.63, 0.25])
 selected_tz = col_tz.selectbox(
-    "Timezone", options=COMMON_TZ, index=0, key="last_run_tz"
+    "Timezone", options=COMMON_TZ,
+    key="last_run_tz", on_change=_on_tz_change,
 )
-lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=30)
+lookback_days = col_days.slider(
+    "Lookback days", min_value=1, max_value=60,
+    value=st.session_state["last_run_days"],
+    key="last_run_days", on_change=_on_days_change,
+)
 col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
 
 tz = pytz.timezone(selected_tz)
