@@ -8,6 +8,7 @@ from menu.settings.storage import get_cached_settings
 st.header("Jobs Settings")
 
 w = make_workspace_client()
+_workspace_host = (w.config.host or "").rstrip("/")
 _settings = get_cached_settings(w)
 _teams_cfg = _settings["teams"]
 _team_names = [t["name"] for t in _teams_cfg]
@@ -740,8 +741,10 @@ for job in jobs:
         sched_display = sched_label
 
     row = st.columns(COL_WIDTHS)
+    _job_url = f"{_workspace_host}/#job/{job_id}"
     row[0].markdown(
-        f"{name}<br><span style='color:gray;font-size:0.75em'>ID: {job_id}</span>",
+        f"<a href='{_job_url}' target='_blank' style='text-decoration:underline;color:inherit'>{name}</a>"
+        f"<br><span style='color:gray;font-size:0.75em'>ID: {job_id}</span>",
         unsafe_allow_html=True,
     )
     row[1].markdown(f"<div style='text-align:center'>{_team_display}</div>", unsafe_allow_html=True)
