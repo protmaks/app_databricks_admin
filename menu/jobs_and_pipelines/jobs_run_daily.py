@@ -5,14 +5,21 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk.service.jobs import RunType
-from menu.compute.utils import make_workspace_client, COMMON_TZ
+from menu.compute.utils import make_workspace_client, COMMON_TZ, match_team_rules
+from menu.settings.storage import get_cached_settings
 
 st.header("Job Runs History")
+
+_w_settings = make_workspace_client()
+_settings = get_cached_settings(_w_settings)
+_global_tz = _settings["timezone"]
+_teams_cfg = _settings["teams"]
+_team_names = [t["name"] for t in _teams_cfg]
 
 # Restore filter state from URL query params on first load
 if "last_run_tz" not in st.session_state:
     _qp_tz = st.query_params.get("tz", "")
-    st.session_state["last_run_tz"] = _qp_tz if _qp_tz in COMMON_TZ else COMMON_TZ[0]
+    st.session_state["last_run_tz"] = _qp_tz if _qp_tz in COMMON_TZ else _global_tz
 
 if "last_run_days" not in st.session_state:
     try:
@@ -36,7 +43,15 @@ lookback_days = col_days.slider(
     value=st.session_state["last_run_days"],
     key="last_run_days", on_change=_on_days_change,
 )
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+if "last_run_teams" not in st.session_state:
+    _default_team_ids = _settings.get("default_teams", [])
+    _id_to_name = {t["id"]: t["name"] for t in _teams_cfg}
+    _default_team_names = [_id_to_name[tid] for tid in _default_team_ids if tid in _id_to_name]
+    st.session_state["last_run_teams"] = [n for n in _default_team_names if n in _team_names]
+selected_teams = col_teams.multiselect(
+    "Teams", options=_team_names, default=st.session_state["last_run_teams"],
+    placeholder="All teams", key="last_run_teams",
+)
 
 tz = pytz.timezone(selected_tz)
 now_local = dt.datetime.now(tz)
@@ -151,6 +166,21 @@ for run in active_runs:
         }
     )
 
+if selected_teams:
+    matched_ids = {
+        j.job_id for j in all_jobs
+        if j.job_id and any(
+            m in selected_teams
+            for m in match_team_rules(
+                j.settings.name or f"job-{j.job_id}" if j.settings else f"job-{j.job_id}",
+                getattr(j, "creator_user_name", None) or "unknown",
+                _teams_cfg,
+                tags=j.settings.tags if j.settings else {},
+            )
+        )
+    }
+    records = [r for r in records if r.get("job_id") in matched_ids]
+
 if not records:
     st.info(f"No job runs found in the last {lookback_days} days.")
     st.stop()
@@ -211,25 +241,9 @@ label_colors = {
     "NO RUN":   "#AAAAAA",
 }
 
-LABEL_W = 200
-label_chart = (
-    alt.Chart(df_worst)
-    .mark_text(align="right", baseline="middle", fontSize=11, limit=LABEL_W - 5)
-    .encode(
-        y=alt.Y("job:N", sort=job_names, axis=None),
-        x=alt.value(LABEL_W),
-        text=alt.Text("job:N"),
-        color=alt.Color(
-            "worst_status:N",
-            scale=alt.Scale(
-                domain=list(label_colors.keys()),
-                range=list(label_colors.values()),
-            ),
-            legend=None,
-        ),
-    )
-    .properties(width=LABEL_W, height=alt.Step(25))
-)
+_ws_host = w.config.host.rstrip("/")
+job_to_url = {name: f"{_ws_host}/jobs/{jid}" for name, jid in job_to_id.items()}
+job_worst = dict(zip(df_worst["job"], df_worst["worst_status"]))
 
 heatmap = (
     alt.Chart(df_grid)
@@ -264,10 +278,7 @@ heatmap = (
     .properties(height=alt.Step(25))
 )
 
-chart = (
-    alt.hconcat(label_chart, heatmap, spacing=0)
-    .resolve_scale(y="shared", color="independent")
-)
+chart = heatmap
 
 st.markdown("""
 <style>
@@ -333,11 +344,40 @@ button[data-testid="stBaseButton-secondary"] p {
 [data-testid="stMarkdownContainer"] p {
     font-size: 0.6rem !important;
 }
+.job-labels {
+    padding-top: 5px;
+    display: flex;
+    flex-direction: column;
+}
+.job-labels a {
+    height: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-size: 11px;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 4px;
+}
+.job-labels a:hover {
+    text-decoration: underline;
+}
 </style>
 """, unsafe_allow_html=True)
 
-col_btn, col_chart = st.columns([0.02, 0.98])
+col_btn, col_labels, col_chart = st.columns([0.02, 0.15, 0.83])
 triggered_job = None
+
+_label_html = '<div class="job-labels">' + "".join(
+    f'<a href="{job_to_url.get(jname, "#")}" target="_blank" rel="noopener noreferrer" '
+    f'style="color:{label_colors[job_worst.get(jname, "NO RUN")]};" title="{jname}">{jname}</a>'
+    for jname in job_names
+) + "</div>"
+
+with col_labels:
+    st.markdown(_label_html, unsafe_allow_html=True)
 
 with col_chart:
     st.altair_chart(chart, use_container_width=True)

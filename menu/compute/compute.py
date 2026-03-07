@@ -1,6 +1,7 @@
 import pytz
 import streamlit as st
 from menu.compute.utils import make_workspace_client, COMMON_TZ
+from menu.settings.storage import get_cached_settings
 from databricks.sdk.service.compute import ClusterSource, State as ClusterState
 from databricks.sdk.service.sql import State as WarehouseState
 from databricks.sdk.service.apps import ApplicationState, ComputeState as AppComputeState
@@ -8,8 +9,11 @@ from databricks.sdk.service.database import DatabaseInstanceState
 
 st.header("Active Compute")
 
-_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
-_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+_w_settings = make_workspace_client()
+_global_tz = get_cached_settings(_w_settings)["timezone"]
+
+_tz_from_url = st.query_params.get("tz", _global_tz)
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else COMMON_TZ.index(_global_tz) if _global_tz in COMMON_TZ else 0
 selected_tz = st.selectbox("Timezone", options=COMMON_TZ, index=_tz_index, key="compute_tz")
 st.query_params["tz"] = selected_tz
 tz = pytz.timezone(selected_tz)

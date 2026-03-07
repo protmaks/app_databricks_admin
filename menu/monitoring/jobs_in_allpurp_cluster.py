@@ -12,10 +12,13 @@ from databricks.sdk.service.compute import (
 )
 
 from menu.compute.utils import run_uses_cluster, resolve_display_state, make_workspace_client, COMMON_TZ, MAX_CLUSTER_EVENTS
+from menu.settings.storage import get_cached_settings
 
 st.header("Cluster Jobs")
 
 w = make_workspace_client()
+_settings = get_cached_settings(w)
+_global_tz = _settings["timezone"]
 
 clusters = [
     c for c in w.clusters.list()
@@ -196,8 +199,8 @@ try:
 except ValueError:
     _date_default = dt.date.today()
 selected_date = col_date.date_input("Date", value=_date_default)
-_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
-_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+_tz_from_url = st.query_params.get("tz", _global_tz)
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else COMMON_TZ.index(_global_tz) if _global_tz in COMMON_TZ else 0
 selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=_tz_index, key="cluster_jobs_tz"
 )

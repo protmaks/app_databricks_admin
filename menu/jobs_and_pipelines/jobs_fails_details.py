@@ -5,18 +5,33 @@ import pandas as pd
 import pytz
 import streamlit as st
 from databricks.sdk import WorkspaceClient
-from menu.compute.utils import make_workspace_client, COMMON_TZ
+from menu.compute.utils import make_workspace_client, COMMON_TZ, match_team_rules
+from menu.settings.storage import get_cached_settings
 
 st.header("Job Fails Details")
 
+_w_settings = make_workspace_client()
+_settings = get_cached_settings(_w_settings)
+_global_tz = _settings["timezone"]
+_teams_cfg = _settings["teams"]
+_team_names = [t["name"] for t in _teams_cfg]
+
 col_tz, col_days, col_teams = st.columns([0.12, 0.63, 0.25])
-_tz_from_url = st.query_params.get("tz", COMMON_TZ[0])
-_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else 0
+_tz_from_url = st.query_params.get("tz", _global_tz)
+_tz_index = COMMON_TZ.index(_tz_from_url) if _tz_from_url in COMMON_TZ else COMMON_TZ.index(_global_tz) if _global_tz in COMMON_TZ else 0
 selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=_tz_index, key="fails_tz")
 _days_from_url = int(st.query_params.get("days", 30))
 _days_default = max(1, min(60, _days_from_url))
 lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=_days_default)
-col_teams.multiselect("Teams", options=[], default=[], disabled=True, help="Coming soon")
+if "fails_teams" not in st.session_state:
+    _default_team_ids = _settings.get("default_teams", [])
+    _id_to_name = {t["id"]: t["name"] for t in _teams_cfg}
+    _default_team_names = [_id_to_name[tid] for tid in _default_team_ids if tid in _id_to_name]
+    st.session_state["fails_teams"] = [n for n in _default_team_names if n in _team_names]
+selected_teams = col_teams.multiselect(
+    "Teams", options=_team_names, default=st.session_state["fails_teams"],
+    placeholder="All teams", key="fails_teams",
+)
 st.query_params["tz"] = selected_tz
 st.query_params["days"] = str(lookback_days)
 
@@ -88,6 +103,21 @@ for run in failed_runs:
         "duration_min": duration_min,
         "error":        error_msg,
     })
+
+if selected_teams:
+    matched_ids = {
+        j.job_id for j in all_jobs
+        if j.job_id and any(
+            m in selected_teams
+            for m in match_team_rules(
+                j.settings.name or f"job-{j.job_id}" if j.settings else f"job-{j.job_id}",
+                getattr(j, "creator_user_name", None) or "unknown",
+                _teams_cfg,
+                tags=j.settings.tags if j.settings else {},
+            )
+        )
+    }
+    records = [r for r in records if r.get("job_id") in matched_ids]
 
 if not records:
     st.info(f"No completed runs in the last {lookback_days} days.")

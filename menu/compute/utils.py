@@ -149,3 +149,54 @@ def format_uptime(total_seconds):
     hours, rem = divmod(rem, 3600)
     mins = rem // 60
     return f"{days}d {hours}h {mins}m"
+
+
+def match_team_rules(job_name: str, creator: str, teams_config: list, tags: dict | None = None) -> list[str]:
+    """Return list of team names whose rules match the given job_name / creator / tags.
+
+    Conditions are evaluated left-to-right. Each condition (from the second onwards)
+    carries its own 'logic' key ("AND" or "OR") that connects it to the accumulated
+    result. The team-level 'logic' field is used as fallback for conditions that lack
+    their own key (backward compatibility).
+    """
+    job_tags = tags or {}
+    matched = []
+    for team in teams_config:
+        conditions = team.get("conditions", [])
+        fallback_logic = team.get("logic", "OR").upper()
+        if not conditions:
+            continue
+
+        def _eval(cond):
+            field = cond.get("field")
+            op = cond.get("operator", "")
+            if field == "tags":
+                tag_key = cond.get("tag_key", "")
+                if op == "has_key":
+                    return tag_key.lower() in {k.lower() for k in job_tags}
+                tag_val = next((v for k, v in job_tags.items() if k.lower() == tag_key.lower()), None)
+                if tag_val is None:
+                    return False
+                s, v = tag_val.lower(), cond.get("value", "").lower()
+            else:
+                subject = job_name if field == "job_name" else creator
+                s, v = subject.lower(), cond.get("value", "").lower()
+            if op == "starts_with":
+                return s.startswith(v)
+            elif op == "ends_with":
+                return s.endswith(v)
+            elif op == "contains":
+                return v in s
+            elif op == "equals":
+                return s == v
+            return False
+
+        result = _eval(conditions[0])
+        for cond in conditions[1:]:
+            logic = cond.get("logic", fallback_logic).upper()
+            hit = _eval(cond)
+            result = (result and hit) if logic == "AND" else (result or hit)
+
+        if result:
+            matched.append(team["name"])
+    return matched

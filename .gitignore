@@ -4,3 +4,4 @@ __pycache__/
 .databricks/
 .venv/
 .vscode/
+settings_local.json
