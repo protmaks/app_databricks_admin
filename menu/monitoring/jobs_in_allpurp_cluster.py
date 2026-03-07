@@ -12,7 +12,182 @@ from databricks.sdk.service.compute import (
 )
 
 from menu.compute.utils import run_uses_cluster, resolve_display_state, make_workspace_client, COMMON_TZ, MAX_CLUSTER_EVENTS
+
 st.header("Cluster Jobs")
+
+w = make_workspace_client()
+
+clusters = [
+    c for c in w.clusters.list()
+    if c.cluster_source not in (
+        ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE,
+    )
+]
+
+if not clusters:
+    st.info("No all-purpose clusters found.")
+    st.stop()
+
+EVENT_TO_STATE = {
+    EventType.CREATING: "STARTING",
+    EventType.STARTING: "STARTING",
+    EventType.RUNNING: "RUNNING",
+    EventType.RESTARTING: "RESTARTING",
+    EventType.TERMINATING: "TERMINATING",
+    EventType.EDITED: None,
+    EventType.RESIZING: None,
+    EventType.DRIVER_HEALTHY: None,
+}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Chart 0 — Daily Cluster Activity (last 90 days) — above filters
+# ═══════════════════════════════════════════════════════════════════
+
+_chart_tz = pytz.timezone(COMMON_TZ[0])
+_today = dt.date.today()
+_ninety_days_ago = _today - dt.timedelta(days=90)
+_range_start = _chart_tz.localize(dt.datetime.combine(_ninety_days_ago, dt.time.min))
+_range_end = min(
+    _chart_tz.localize(dt.datetime.combine(_today, dt.time.max)), dt.datetime.now(_chart_tz)
+)
+_range_start_ms = int(_range_start.timestamp() * 1000)
+_range_end_ms = int(_range_end.timestamp() * 1000)
+
+_ACTIVE_STATES = {"STARTING", "RUNNING", "RESTARTING", "INACTIVITY"}
+
+# date -> {cluster_name -> seconds}
+_daily_cluster_running: dict[dt.date, dict[str, float]] = {}
+
+with st.spinner("Fetching 90-day cluster events…"):
+    for _c in clusters:
+        try:
+            _resp = w.clusters.events(
+                cluster_id=_c.cluster_id,
+                start_time=_range_start_ms,
+                end_time=_range_end_ms,
+                order=GetEventsOrder.ASC,
+                limit=MAX_CLUSTER_EVENTS,
+            )
+            _c_events = list(_resp) if _resp else []
+        except Exception:
+            _c_events = []
+
+        if not _c_events:
+            continue
+
+        _cur_state = None
+        _cur_start = None
+
+        for _ev in _c_events:
+            _ts = dt.datetime.fromtimestamp(_ev.timestamp / 1000, tz=pytz.utc).astimezone(_chart_tz)
+            _ev_type = _ev.type
+            if _ev_type in EVENT_TO_STATE:
+                _new_state = EVENT_TO_STATE[_ev_type]
+            elif _ev_type in (EventType.PINNED, EventType.UNPINNED):
+                _new_state = None
+            else:
+                _new_state = _ev_type.value if hasattr(_ev_type, "value") else str(_ev_type)
+
+            if _new_state is None:
+                continue
+
+            if _cur_state is not None and _cur_state in _ACTIVE_STATES and _cur_start is not None:
+                _seg_start = _cur_start
+                _seg_end = _ts
+                _d = _seg_start.date()
+                while _d <= _seg_end.date():
+                    _day_begin = max(_seg_start, _chart_tz.localize(dt.datetime.combine(_d, dt.time.min)))
+                    _day_finish = min(_seg_end, _chart_tz.localize(dt.datetime.combine(_d, dt.time.max)))
+                    _secs = (_day_finish - _day_begin).total_seconds()
+                    if _secs > 0:
+                        _day_dict = _daily_cluster_running.setdefault(_d, {})
+                        _day_dict[_c.cluster_name] = _day_dict.get(_c.cluster_name, 0) + _secs
+                    _d += dt.timedelta(days=1)
+
+            _cur_state = _new_state
+            _cur_start = _ts
+
+        # Close last active segment
+        if _cur_state is not None and _cur_state in _ACTIVE_STATES and _cur_start is not None:
+            _seg_start = _cur_start
+            _seg_end = min(dt.datetime.now(_chart_tz), _range_end)
+            _d = _seg_start.date()
+            while _d <= _seg_end.date():
+                _day_begin = max(_seg_start, _chart_tz.localize(dt.datetime.combine(_d, dt.time.min)))
+                _day_finish = min(_seg_end, _chart_tz.localize(dt.datetime.combine(_d, dt.time.max)))
+                _secs = (_day_finish - _day_begin).total_seconds()
+                if _secs > 0:
+                    _day_dict = _daily_cluster_running.setdefault(_d, {})
+                    _day_dict[_c.cluster_name] = _day_dict.get(_c.cluster_name, 0) + _secs
+                _d += dt.timedelta(days=1)
+
+_all_cluster_names = sorted(set(_c.cluster_name for _c in clusters))
+
+_cluster_daily_rows = []
+_d = _ninety_days_ago
+while _d <= _today:
+    _day_dict = _daily_cluster_running.get(_d, {})
+    for _cname in _all_cluster_names:
+        _secs = _day_dict.get(_cname, 0)
+        _cluster_daily_rows.append({"date": _d, "cluster": _cname, "runtime_hours": round(_secs / 3600, 2)})
+    _d += dt.timedelta(days=1)
+
+_cluster_daily_df = pd.DataFrame(_cluster_daily_rows)
+_cluster_daily_df["date"] = pd.to_datetime(_cluster_daily_df["date"])
+
+# Keep only days when the cluster actually ran; add unit=1 for stacking
+_active_df = _cluster_daily_df[_cluster_daily_df["runtime_hours"] > 0].copy()
+_active_df["_unit"] = 1
+_active_df["date_str"] = _active_df["date"].dt.strftime("%Y-%m-%d")
+
+_activity_sel = alt.selection_point(
+    fields=["date_str", "cluster"], on="click", name="activity_sel", clear="dblclick"
+)
+
+_cluster_daily_chart = (
+    alt.Chart(_active_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("date:T", title="Date", axis=alt.Axis(format="%b %d", labelAngle=-45)),
+        y=alt.Y("_unit:Q", title="Clusters", stack="zero", axis=alt.Axis(tickMinStep=1, format="d")),
+        color=alt.Color("cluster:N", legend=alt.Legend(title="Cluster")),
+        order=alt.Order("cluster:N"),
+        opacity=alt.condition(_activity_sel, alt.value(1.0), alt.value(0.5)),
+        tooltip=[
+            alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
+            alt.Tooltip("cluster:N", title="Cluster"),
+            alt.Tooltip("runtime_hours:Q", title="Runtime, h", format=".2f"),
+        ],
+    )
+    .add_params(_activity_sel)
+    .properties(width="container", height=200)
+)
+
+_activity_event = st.altair_chart(_cluster_daily_chart, use_container_width=True, on_select="rerun")
+
+_activity_sel_data = (_activity_event.selection or {}).get("activity_sel", [])
+_clicked_date_str = None
+_clicked_cluster = None
+if isinstance(_activity_sel_data, list) and _activity_sel_data:
+    _first = _activity_sel_data[0]
+    if isinstance(_first, dict):
+        _clicked_date_str = _first.get("date_str")
+        _clicked_cluster = _first.get("cluster")
+elif isinstance(_activity_sel_data, dict):
+    _pts_date = _activity_sel_data.get("date_str", [])
+    _pts_cluster = _activity_sel_data.get("cluster", [])
+    _clicked_date_str = _pts_date[0] if _pts_date else None
+    _clicked_cluster = _pts_cluster[0] if _pts_cluster else None
+
+if _clicked_date_str and _clicked_cluster:
+    st.query_params["date"] = _clicked_date_str
+    st.query_params["cluster"] = _clicked_cluster
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Filters
+# ═══════════════════════════════════════════════════════════════════
 
 col_date, col_tz, col_cluster = st.columns([0.15, 0.10, 0.75])
 _date_from_url = st.query_params.get("date", None)
@@ -29,19 +204,6 @@ selected_tz = col_tz.selectbox(
 st.query_params["tz"] = selected_tz
 st.query_params["date"] = selected_date.isoformat()
 tz = pytz.timezone(selected_tz)
-
-w = make_workspace_client()
-
-clusters = [
-    c for c in w.clusters.list()
-    if c.cluster_source not in (
-        ClusterSource.JOB, ClusterSource.PIPELINE, ClusterSource.PIPELINE_MAINTENANCE,
-    )
-]
-
-if not clusters:
-    st.info("No all-purpose clusters found.")
-    st.stop()
 
 cluster_map = {c.cluster_name: c for c in clusters}
 _cluster_options = sorted(cluster_map.keys())
@@ -69,17 +231,6 @@ day_end_naive = day_start_naive + dt.timedelta(days=1)
 # ═══════════════════════════════════════════════════════════════════
 # Chart 1 — Cluster State Timeline (from cluster_timeline.py)
 # ═══════════════════════════════════════════════════════════════════
-
-EVENT_TO_STATE = {
-    EventType.CREATING: "STARTING",
-    EventType.STARTING: "STARTING",
-    EventType.RUNNING: "RUNNING",
-    EventType.RESTARTING: "RESTARTING",
-    EventType.TERMINATING: "TERMINATING",
-    EventType.EDITED: None,
-    EventType.RESIZING: None,
-    EventType.DRIVER_HEALTHY: None,
-}
 
 CLUSTER_STATE_COLORS = {
     "STARTING":    "#FFD54F",

@@ -14,7 +14,12 @@ from databricks.sdk.service.compute import (
 
 st.header("Cluster State Timeline")
 
-col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
+daily_chart_container = st.container()
+timeline_chart_container = st.container()
+
+with timeline_chart_container:
+    st.subheader("Cluster State Timeline (Details)")
+    col_date, col_tz, col_teams = st.columns([0.15, 0.10, 0.75])
 _pending = st.session_state.pop("_timeline_date_pending", None)
 if "timeline_date" not in st.session_state:
     st.session_state["timeline_date"] = dt.date.today()
@@ -230,7 +235,6 @@ if segments:
     )
 
 # --- Daily cluster runtime (last 90 days) ---
-st.subheader("Daily Cluster Runtime (last 90 days)")
 
 today = dt.date.today()
 thirty_days_ago = today - dt.timedelta(days=90)
@@ -417,7 +421,8 @@ daily_chart = (
     .properties(width="container", height=250)
 )
 
-_event = st.altair_chart(daily_chart, use_container_width=True, on_select="rerun")
+with daily_chart_container:
+    _event = st.altair_chart(daily_chart, use_container_width=True, on_select="rerun")
 
 _sel_data = (_event.selection or {}).get("date_sel", [])
 _date_str_val = None
@@ -437,8 +442,8 @@ if _date_str_val:
     except Exception:
         pass
 
-st.subheader("Cluster State Timeline")
-if not segments:
-    st.info("No events found for the selected date.")
-else:
-    st.altair_chart(chart, use_container_width=True)
+with timeline_chart_container:
+    if not segments:
+        st.info("No events found for the selected date.")
+    else:
+        st.altair_chart(chart, use_container_width=True)
