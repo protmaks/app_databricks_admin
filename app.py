@@ -29,6 +29,7 @@ menu = {
         st.Page("menu/monitoring/jobs_in_allpurp_cluster.py", title="Jobs in All-purp Cluster", icon=":material/memory:",),
     ],
     "Jobs": [
+        st.Page("menu/jobs_and_pipelines/jobs_performance.py", title="Jobs Performance", icon=":material/speed:"),
         st.Page("menu/jobs_and_pipelines/jobs_settings.py", title="Check Job Settings", icon=":material/check_circle:",),
         st.Page("menu/jobs_and_pipelines/jobs_run_daily.py", title="Jobs Runs (Daily)", icon=":material/grid_view:"),
         st.Page("menu/jobs_and_pipelines/jobs_timeline_hourly.py", title="Jobs Timeline (Hourly)", icon=":material/schedule:"),
