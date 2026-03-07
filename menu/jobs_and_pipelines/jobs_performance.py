@@ -399,12 +399,12 @@ def _sort_key(job):
             return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
         except (ValueError, IndexError):
             return (0, 0)
-    if col == "Last Success Time":
-        _, last = _perf_map.get(job.job_id, (None, None))
-        return last if last is not None else -1
-    if col == "Last Run Duration":
+    if col == "Avg Last 5 Runs":
         avg, _ = _perf_map.get(job.job_id, (None, None))
         return avg if avg is not None else -1
+    if col == "Last Run Duration":
+        _, last = _perf_map.get(job.job_id, (None, None))
+        return last if last is not None else -1
     return ""
 
 
