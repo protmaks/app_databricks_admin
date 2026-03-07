@@ -299,9 +299,14 @@ selected_creators = col_creator.multiselect(
     key="jobs_settings_creators",
     on_change=_on_creators_change,
 )
+if "jobs_settings_teams" not in st.session_state:
+    _default_team_ids = _settings.get("default_teams", [])
+    _id_to_name = {t["id"]: t["name"] for t in _teams_cfg}
+    _default_team_names = [_id_to_name[tid] for tid in _default_team_ids if tid in _id_to_name]
+    st.session_state["jobs_settings_teams"] = [n for n in _default_team_names if n in _team_names]
 selected_teams = col_teams.multiselect(
-    "Teams", options=_team_names, default=[], placeholder="All teams",
-    key="jobs_settings_teams",
+    "Teams", options=_team_names, default=st.session_state["jobs_settings_teams"],
+    placeholder="All teams", key="jobs_settings_teams",
 )
 
 if selected_creators:

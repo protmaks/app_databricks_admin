@@ -15,13 +15,20 @@ DEFAULT_SETTINGS: dict = {
     "version": 1,
     "timezone": "UTC",
     "teams": [],
+    "default_teams": [],
 }
+
+
+def _migrate(data: dict) -> dict:
+    """Backfill new fields added to settings without a version bump."""
+    data.setdefault("default_teams", [])
+    return data
 
 
 def _load_local() -> dict:
     try:
         data = json.loads(_LOCAL_PATH.read_text(encoding="utf-8"))
-        return data if data.get("version") == 1 else DEFAULT_SETTINGS.copy()
+        return _migrate(data) if data.get("version") == 1 else DEFAULT_SETTINGS.copy()
     except Exception:
         return DEFAULT_SETTINGS.copy()
 
@@ -35,7 +42,7 @@ def load_settings(w: WorkspaceClient) -> dict:
     try:
         resp = w.dbfs.read(path=SETTINGS_PATH)
         data = json.loads(base64.b64decode(resp.data).decode("utf-8"))
-        return data if data.get("version") == 1 else DEFAULT_SETTINGS.copy()
+        return _migrate(data) if data.get("version") == 1 else DEFAULT_SETTINGS.copy()
     except Exception:
         return _load_local()
 

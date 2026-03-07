@@ -23,9 +23,14 @@ selected_tz = col_tz.selectbox("Timezone", options=COMMON_TZ, index=_tz_index, k
 _days_from_url = int(st.query_params.get("days", 30))
 _days_default = max(1, min(60, _days_from_url))
 lookback_days = col_days.slider("Lookback days", min_value=1, max_value=60, value=_days_default)
+if "fails_teams" not in st.session_state:
+    _default_team_ids = _settings.get("default_teams", [])
+    _id_to_name = {t["id"]: t["name"] for t in _teams_cfg}
+    _default_team_names = [_id_to_name[tid] for tid in _default_team_ids if tid in _id_to_name]
+    st.session_state["fails_teams"] = [n for n in _default_team_names if n in _team_names]
 selected_teams = col_teams.multiselect(
-    "Teams", options=_team_names, default=[], placeholder="All teams",
-    key="fails_teams",
+    "Teams", options=_team_names, default=st.session_state["fails_teams"],
+    placeholder="All teams", key="fails_teams",
 )
 st.query_params["tz"] = selected_tz
 st.query_params["days"] = str(lookback_days)

@@ -18,6 +18,8 @@ if "settings_tz" not in st.session_state:
     st.session_state["settings_tz"] = _loaded["timezone"]
 if "settings_teams" not in st.session_state:
     st.session_state["settings_teams"] = [{**t} for t in _loaded["teams"]]
+if "settings_default_teams" not in st.session_state:
+    st.session_state["settings_default_teams"] = list(_loaded.get("default_teams", []))
 
 # ── Section 1: Timezone ──────────────────────────────────────────────────────
 tz_index = (
@@ -80,9 +82,29 @@ for team_idx, team in enumerate(teams):
     expanded_key = f"expanded_{team_id}"
     is_expanded = st.session_state.get(expanded_key, False) or st.session_state.get(confirm_key, False)
 
-    with st.expander(team["name"] or f"Team {team_idx + 1}", expanded=is_expanded):
-        # Team name + Delete button in one row
-        col_name, col_del = st.columns([0.88, 0.12])
+    _default_marker = " ★" if team_id in st.session_state["settings_default_teams"] else ""
+    with st.expander((team["name"] or f"Team {team_idx + 1}") + _default_marker, expanded=is_expanded):
+        # Default checkbox + Team name + Delete button in one row
+        col_default, col_name, col_del = st.columns([0.07, 0.81, 0.12])
+
+        def _on_default_change(tid=team_id):
+            if st.session_state[f"team_default_{tid}"]:
+                if tid not in st.session_state["settings_default_teams"]:
+                    st.session_state["settings_default_teams"].append(tid)
+            else:
+                st.session_state["settings_default_teams"] = [
+                    x for x in st.session_state["settings_default_teams"] if x != tid
+                ]
+
+        col_default.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+        col_default.checkbox(
+            "Default",
+            value=team_id in st.session_state["settings_default_teams"],
+            key=f"team_default_{team_id}",
+            on_change=_on_default_change,
+            label_visibility="collapsed",
+            help="Pre-select this team on all filter pages",
+        )
 
         def _on_name_change(tidx=team_idx, tid=team_id):
             teams[tidx]["name"] = st.session_state[f"team_name_{tid}"]
@@ -238,6 +260,7 @@ if col_save.button("Save Settings", type="primary", key="save_settings_btn"):
         "version": 1,
         "timezone": st.session_state["settings_tz"],
         "teams": st.session_state["settings_teams"],
+        "default_teams": st.session_state["settings_default_teams"],
     }
 
     errors: list[str] = []
@@ -255,6 +278,10 @@ if col_save.button("Save Settings", type="primary", key="save_settings_btn"):
     if errors:
         col_msg.error("Fix before saving:\n" + "\n".join(f"- {e}" for e in errors))
     else:
+        valid_team_ids = {t["id"] for t in settings_to_save["teams"]}
+        settings_to_save["default_teams"] = [
+            tid for tid in settings_to_save["default_teams"] if tid in valid_team_ids
+        ]
         try:
             save_settings(w, settings_to_save)
             # Invalidate the per-session cache so all other pages reload from DBFS

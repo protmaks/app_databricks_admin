@@ -24,9 +24,14 @@ selected_tz = col_tz.selectbox(
     "Timezone", options=COMMON_TZ, index=_tz_index, key="jobs_timeline_tz"
 )
 st.query_params["tz"] = selected_tz
+if "timeline_teams" not in st.session_state:
+    _default_team_ids = _settings.get("default_teams", [])
+    _id_to_name = {t["id"]: t["name"] for t in _teams_cfg}
+    _default_team_names = [_id_to_name[tid] for tid in _default_team_ids if tid in _id_to_name]
+    st.session_state["timeline_teams"] = [n for n in _default_team_names if n in _team_names]
 selected_teams = col_teams.multiselect(
-    "Teams", options=_team_names, default=[], placeholder="All teams",
-    key="timeline_teams",
+    "Teams", options=_team_names, default=st.session_state["timeline_teams"],
+    placeholder="All teams", key="timeline_teams",
 )
 tz = pytz.timezone(selected_tz)
 
